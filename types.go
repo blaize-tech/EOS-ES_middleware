@@ -3,14 +3,14 @@ package main
 
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`
-	Pos int32 `json:"pos,omitempty"`
-	Offset int32 `json:"offset,omitempty"`
+	Pos *int32 `json:"pos,omitempty"`
+	Offset *int32 `json:"offset,omitempty"`
 }
 
 
 type GetTransactionParams struct {
 	Id string `json:"id"`
-	BlockNumHint int32 `json:"block_num_hint,omitempty"`
+	BlockNumHint *int32 `json:"block_num_hint,omitempty"`
 }
 
 
