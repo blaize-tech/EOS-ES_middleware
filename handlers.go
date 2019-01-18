@@ -40,7 +40,7 @@ func getActionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if params.Offset == nil {
 		params.Offset = new(int32)
-		*params.Offset = -1
+		*params.Offset = 0
 	}
 	fmt.Printf("Pos %d\n", int(*params.Pos))
 	fmt.Printf("Offset %d\n", int(*params.Offset))
@@ -52,14 +52,15 @@ func getActionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
-	searchResult, err := client.Search().
+	search := client.Search().
 		Index("action_traces").
 		Query(query).
 		Sort("receipt.global_sequence", true). //from old to recent
-		From(int(*params.Pos)).Size(int(*params.Offset)).
-		Pretty(true).
-		Do(context.Background())
-
+		From(int(*params.Pos))
+	if *params.Offset > 0 { //TODO: check for ES max records
+		search = search.Size(int(*params.Offset))
+	}
+	searchResult, err := search.Do(context.Background())
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -68,12 +69,17 @@ func getActionsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
 	fmt.Printf("Found a total of %d records\n", searchResult.Hits.TotalHits)
 
-	b, err := json.Marshal(searchResult.Hits.Hits)
+	result := GetActionsResult { Actions: []json.RawMessage{} }
+	for _, hit := range searchResult.Hits.Hits {
+		//TODO: check Source for nil?
+		result.Actions = append(result.Actions, *hit.Source)
+	}
+	b, err := json.Marshal(result)
     if err != nil {
-        fmt.Println(err)
+        http.Error(w, err.Error(), 500)
         return
     }
-    fmt.Fprintf(w, "{ \"actions\": \n" + string(b) + "}")
+    fmt.Fprintf(w, string(b))
 }
 
 func getTransactionHandler(w http.ResponseWriter, r *http.Request) {
@@ -88,9 +94,70 @@ func getTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Invalid arguments.", 400)
 		return
+	}
+	
+	client, err := elastic.NewClient()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	getResult, err := client.MultiGet().
+		Add(elastic.NewMultiGetItem().Index("transactions").Id(params.Id)).
+		Add(elastic.NewMultiGetItem().Index("transaction_traces").Id(params.Id)).
+		Do(context.Background())
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	if getResult == nil || getResult.Docs == nil || len(getResult.Docs) != 2 ||
+		getResult.Docs[0].Error != nil || getResult.Docs[1].Error != nil {
+		http.Error(w, "Failed to query ES", 500)
+		return
+	}
+	docTx := getResult.Docs[0]
+	docTxTrace := getResult.Docs[1]
+
+	var txSource map[string]*json.RawMessage
+	err = json.Unmarshal(*docTx.Source, &txSource)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	var txTraceSource map[string]*json.RawMessage
+	err = json.Unmarshal(*docTxTrace.Source, &txTraceSource)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	result := GetTransactionResult { Id: params.Id, Trx: make(map[string]json.RawMessage),
+		BlockTime: *txTraceSource["block_time"], BlockNum: *txSource["block_num"],
+		Traces: *txTraceSource["action_traces"] }
+	trx := make(map[string]json.RawMessage)
+	trx["expiration"] = *txSource["expiration"]
+	trx["ref_block_num"] = *txSource["ref_block_num"]
+	trx["ref_block_prefix"] = *txSource["ref_block_prefix"]
+	trx["max_net_usage_words"] = *txSource["max_net_usage_words"]
+	trx["max_cpu_usage_ms"] = *txSource["max_cpu_usage_ms"]
+	trx["delay_sec"] = *txSource["delay_sec"]
+	trx["context_free_actions"] = *txSource["context_free_actions"]
+	trx["actions"] = *txSource["actions"]
+	trx["transaction_extensions"] = *txSource["transaction_extensions"]
+	trx["signatures"] = *txSource["signatures"]
+	trx["context_free_data"] = *txSource["context_free_data"]
+	byteTrx, err := json.Marshal(trx)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	result.Trx["trx"] = byteTrx
+	result.Trx["receipt"] = *txTraceSource["receipt"]
+	b, err := json.Marshal(result)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
     }
-    
-    fmt.Fprintf(w, "Transaction requested")
+    fmt.Fprintf(w, string(b))
 }
 
 func getKeyAccountsHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +184,6 @@ func getKeyAccountsHandler(w http.ResponseWriter, r *http.Request) {
 	searchResult, err := client.Search().
 		Index("accounts").
 		Query(query).
-		Pretty(true).
 		Do(context.Background())
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -127,12 +193,23 @@ func getKeyAccountsHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
 	fmt.Printf("Found a total of %d records\n", searchResult.Hits.TotalHits)
 
-	b, err := json.Marshal(searchResult.Hits.Hits)
+	result := GetKeyAccountsResult { AccountNames: []json.RawMessage{} }
+	for _, hit := range searchResult.Hits.Hits {
+		//TODO: check Source for nil?
+		var objmap map[string]*json.RawMessage
+		err := json.Unmarshal(*hit.Source, &objmap)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		result.AccountNames = append(result.AccountNames, *objmap["name"])
+	}
+	b, err := json.Marshal(result)
     if err != nil {
-        fmt.Println(err)
+        http.Error(w, err.Error(), 500)
         return
     }
-    fmt.Fprintf(w, "account_names: " + string(b))
+    fmt.Fprintf(w, string(b))
 }
 
 func getControlledAccountsHandler(w http.ResponseWriter, r *http.Request) {
@@ -148,6 +225,47 @@ func getControlledAccountsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid arguments.", 400)
 		return
 	}
+
+	client, err := elastic.NewClient()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	query := elastic.NewBoolQuery()
+	query = query.Must(elastic.NewMatchQuery("name", params.ControllingAccount)) //Is it better to convert name to number and search by id?
+	searchResult, err := client.Search().
+		Index("accounts").
+		Query(query).
+		Do(context.Background())
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
     
-    fmt.Fprintf(w, "Controlled accounts requested")
+    fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
+	fmt.Printf("Found a total of %d records\n", searchResult.Hits.TotalHits)
+
+	result := GetControlledAccountsResult { AccountNames: []json.RawMessage{} }
+	for _, hit := range searchResult.Hits.Hits {
+		//TODO: check Source for nil?
+		var objmap map[string]*json.RawMessage
+		err := json.Unmarshal(*hit.Source, &objmap)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		var accounts []json.RawMessage
+		err = json.Unmarshal(*objmap["account_controls"], &accounts)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		result.AccountNames = append(result.AccountNames, accounts...)
+	}
+	b, err := json.Marshal(result)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
+    fmt.Fprintf(w, string(b))
 }

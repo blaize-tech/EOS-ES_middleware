@@ -1,24 +1,52 @@
 package main
 
+import (
+	"encoding/json"
+)
 
+
+//get_actions types
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`
 	Pos *int32 `json:"pos,omitempty"`
 	Offset *int32 `json:"offset,omitempty"`
 }
 
+type GetActionsResult struct {
+	Actions []json.RawMessage `json:"actions"`
+}
 
+
+//get_transaction types
 type GetTransactionParams struct {
 	Id string `json:"id"`
 	BlockNumHint *int32 `json:"block_num_hint,omitempty"`
 }
 
+type GetTransactionResult struct {
+	Id string `json:"id"`
+	Trx map[string]json.RawMessage `json:"trx"`
+	BlockTime json.RawMessage `json:"block_time"`
+	BlockNum json.RawMessage `json:"block_num"`
+	Traces json.RawMessage `json:"traces"`
+}
 
+
+//get_key_accounts types
 type GetKeyAccountsParams struct {
 	PublicKey string `json:"public_key"`
 }
 
+type GetKeyAccountsResult struct {
+	AccountNames []json.RawMessage `json:"account_names"`
+}
 
+
+//get_controlled_accounts types
 type GetControlledAccountsParams struct {
 	ControllingAccount string `json:"controlling_account"`
+}
+
+type GetControlledAccountsResult struct {
+	AccountNames []json.RawMessage `json:"account_names"`
 }
