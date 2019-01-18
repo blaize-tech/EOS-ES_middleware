@@ -12,8 +12,15 @@ type GetActionsParams struct {
 	Offset *int32 `json:"offset,omitempty"`
 }
 
+type Action struct {
+	GlobalActionSeq json.RawMessage `json:"global_action_seq"`
+	BlockNum json.RawMessage `json:"block_num"`
+	BlockTime json.RawMessage `json:"block_time"`
+	ActionTrace json.RawMessage `json:"action_trace"`
+}
+
 type GetActionsResult struct {
-	Actions []json.RawMessage `json:"actions"`
+	Actions []Action `json:"actions"`
 }
 
 

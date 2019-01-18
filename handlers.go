@@ -69,10 +69,28 @@ func getActionsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
 	fmt.Printf("Found a total of %d records\n", searchResult.Hits.TotalHits)
 
-	result := GetActionsResult { Actions: []json.RawMessage{} }
+	result := GetActionsResult { Actions: []Action{} }
 	for _, hit := range searchResult.Hits.Hits {
-		//TODO: check Source for nil?
-		result.Actions = append(result.Actions, *hit.Source)
+		if hit.Source == nil {
+			continue
+		}
+
+		var source map[string]*json.RawMessage
+		err = json.Unmarshal(*hit.Source, &source)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		var receipt map[string]*json.RawMessage
+		err = json.Unmarshal(*source["receipt"], &receipt)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		action := Action { GlobalActionSeq: *receipt["global_sequence"],
+			BlockNum: *source["block_num"], BlockTime: *source["block_time"],
+			ActionTrace: *hit.Source }
+		result.Actions = append(result.Actions, action)
 	}
 	b, err := json.Marshal(result)
     if err != nil {
@@ -195,7 +213,9 @@ func getKeyAccountsHandler(w http.ResponseWriter, r *http.Request) {
 
 	result := GetKeyAccountsResult { AccountNames: []json.RawMessage{} }
 	for _, hit := range searchResult.Hits.Hits {
-		//TODO: check Source for nil?
+		if hit.Source == nil {
+			continue
+		}
 		var objmap map[string]*json.RawMessage
 		err := json.Unmarshal(*hit.Source, &objmap)
 		if err != nil {
@@ -247,7 +267,9 @@ func getControlledAccountsHandler(w http.ResponseWriter, r *http.Request) {
 
 	result := GetControlledAccountsResult { AccountNames: []json.RawMessage{} }
 	for _, hit := range searchResult.Hits.Hits {
-		//TODO: check Source for nil?
+		if hit.Source == nil {
+			continue
+		}
 		var objmap map[string]*json.RawMessage
 		err := json.Unmarshal(*hit.Source, &objmap)
 		if err != nil {
