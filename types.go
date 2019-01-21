@@ -5,6 +5,11 @@ import (
 )
 
 
+type Config struct {
+	Port uint32
+}
+
+
 //get_actions types
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`
