@@ -8,15 +8,15 @@ import (
 //get_actions types
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`
-	Pos *int32 `json:"pos,omitempty"`
-	Offset *int32 `json:"offset,omitempty"`
+	Pos         *int64 `json:"pos,omitempty"`
+	Offset      *int64 `json:"offset,omitempty"`
 }
 
 type Action struct {
 	GlobalActionSeq json.RawMessage `json:"global_action_seq"`
-	BlockNum json.RawMessage `json:"block_num"`
-	BlockTime json.RawMessage `json:"block_time"`
-	ActionTrace json.RawMessage `json:"action_trace"`
+	BlockNum        json.RawMessage `json:"block_num"`
+	BlockTime       json.RawMessage `json:"block_time"`
+	ActionTrace     json.RawMessage `json:"action_trace"`
 }
 
 type GetActionsResult struct {
@@ -26,16 +26,15 @@ type GetActionsResult struct {
 
 //get_transaction types
 type GetTransactionParams struct {
-	Id string `json:"id"`
-	BlockNumHint *int32 `json:"block_num_hint,omitempty"`
+	Id           string `json:"id"`
 }
 
 type GetTransactionResult struct {
-	Id string `json:"id"`
+	Id                      string `json:"id"`
 	Trx map[string]json.RawMessage `json:"trx"`
-	BlockTime json.RawMessage `json:"block_time"`
-	BlockNum json.RawMessage `json:"block_num"`
-	Traces json.RawMessage `json:"traces"`
+	BlockTime      json.RawMessage `json:"block_time"`
+	BlockNum       json.RawMessage `json:"block_num"`
+	Traces         json.RawMessage `json:"traces"`
 }
 
 
