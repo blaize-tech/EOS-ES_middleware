@@ -75,11 +75,7 @@ func getPackedTx(block *json.RawMessage, trxId string) json.RawMessage {
 }
 
 
-func getActions(params GetActionsParams) (*GetActionsResult, error) {
-	client, err := elastic.NewClient()
-	if err != nil {
-		return nil, err
-	}
+func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
 	search := client.Search().
@@ -120,11 +116,7 @@ func getActions(params GetActionsParams) (*GetActionsResult, error) {
 }
 
 
-func getTransaction(params GetTransactionParams) (*GetTransactionResult, error) {
-	client, err := elastic.NewClient()
-	if err != nil {
-		return nil, err
-	}
+func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTransactionResult, error) {
 	getResult, err := client.MultiGet().
 		Add(elastic.NewMultiGetItem().Index(TransactionsIndex).Id(params.Id)).
 		Add(elastic.NewMultiGetItem().Index(TransactionTracesIndex).Id(params.Id)).
@@ -209,11 +201,7 @@ func getTransaction(params GetTransactionParams) (*GetTransactionResult, error) 
 }
 
 
-func getKeyAccounts(params GetKeyAccountsParams) (*GetKeyAccountsResult, error) {
-	client, err := elastic.NewClient()
-	if err != nil {
-		return nil, err
-	}
+func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKeyAccountsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Filter(elastic.NewMatchQuery("pub_keys.key", params.PublicKey))
 	searchResult, err := client.Search().
@@ -241,11 +229,7 @@ func getKeyAccounts(params GetKeyAccountsParams) (*GetKeyAccountsResult, error) 
 }
 
 
-func getControlledAccounts(params GetControlledAccountsParams) (*GetControlledAccountsResult, error) {
-	client, err := elastic.NewClient()
-	if err != nil {
-		return nil, err
-	}
+func getControlledAccounts(client *elastic.Client, params GetControlledAccountsParams) (*GetControlledAccountsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Filter(elastic.NewMatchQuery("name", params.ControllingAccount)) //Is it better to convert name to number and search by id?
 	searchResult, err := client.Search().
