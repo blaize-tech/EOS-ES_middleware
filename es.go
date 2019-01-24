@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strconv"
 	"encoding/json"
 	"github.com/olivere/elastic"
 	"context"
@@ -103,14 +104,33 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 		if err != nil {
 			continue
 		}
+		var act map[string]*json.RawMessage
+		err = json.Unmarshal(*source["act"], &act)
+		if err != nil {
+			continue
+		}
+		unquotedData, err := strconv.Unquote(string(*act["data"]))
+		if err != nil {
+			continue
+		}
+		*act["data"] = []byte(unquotedData)
+		b, err := json.Marshal(act)
+		if err != nil {
+			continue
+		}
+		*source["act"] = b
 		var receipt map[string]*json.RawMessage
 		err = json.Unmarshal(*source["receipt"], &receipt)
 		if err != nil {
 			continue
 		}
+		b, err = json.Marshal(source)
+		if err != nil {
+			continue
+		}
 		action := Action { GlobalActionSeq: *receipt["global_sequence"],
 			BlockNum: *source["block_num"], BlockTime: *source["block_time"],
-			ActionTrace: *hit.Source }
+			ActionTrace: b }
 		result.Actions = append(result.Actions, action)
 	}
 	return result, nil
