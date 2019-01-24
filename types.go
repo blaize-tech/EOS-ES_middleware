@@ -5,6 +5,12 @@ import (
 )
 
 
+type ErrorResult struct {
+	Code    uint16 `json:"code"`
+	Message string `json:"message"`
+}
+
+
 //get_actions types
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`

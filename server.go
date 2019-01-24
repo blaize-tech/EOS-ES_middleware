@@ -58,7 +58,9 @@ func (s *Server) setRoutes() {
 func (s *Server) onlyGet(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method != http.MethodGet) {
-			http.Error(w, "Invalid request method.", 405)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			response := ErrorResult { Code: http.StatusMethodNotAllowed, Message: "Invalid arguments." }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		h(w, r)
@@ -74,14 +76,18 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		var params GetActionsParams
 		err = json.Unmarshal(bytes, &params)
 		if err != nil {
-			http.Error(w, "Invalid arguments.", 400)
+			w.WriteHeader(http.StatusBadRequest)
+			response := ErrorResult { Code: http.StatusBadRequest, Message: "Invalid arguments." }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		if params.Pos == nil {
@@ -95,12 +101,16 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 
 		result, err := getActions(s.ElasticClient, params)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		b, err := json.Marshal(result)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		fmt.Fprintf(w, string(b))
@@ -116,25 +126,33 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		var params GetTransactionParams
 		err = json.Unmarshal(bytes, &params)
 		if err != nil {
-			http.Error(w, "Invalid arguments.", 400)
+			w.WriteHeader(http.StatusBadRequest)
+			response := ErrorResult { Code: http.StatusBadRequest, Message: "Invalid arguments." }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		result, err := getTransaction(s.ElasticClient, params)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		b, err := json.Marshal(result)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		fmt.Fprintf(w, string(b))
@@ -150,25 +168,33 @@ func (s *Server) handleGetKeyAccounts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		var params GetKeyAccountsParams
 		err = json.Unmarshal(bytes, &params)
 		if err != nil {
-			http.Error(w, "Invalid arguments.", 400)
+			w.WriteHeader(http.StatusBadRequest)
+			response := ErrorResult { Code: http.StatusBadRequest, Message: "Invalid arguments." }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		
 		result, err := getKeyAccounts(s.ElasticClient, params)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		b, err := json.Marshal(result)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		fmt.Fprintf(w, string(b))
@@ -184,21 +210,33 @@ func (s *Server) handleGetControlledAccounts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		var params GetControlledAccountsParams
 		err = json.Unmarshal(bytes, &params)
 		if err != nil {
-			http.Error(w, "Invalid arguments.", 400)
+			w.WriteHeader(http.StatusBadRequest)
+			response := ErrorResult { Code: http.StatusBadRequest, Message: "Invalid arguments." }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
 		result, err := getControlledAccounts(s.ElasticClient, params)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
+			return
+		}
 		b, err := json.Marshal(result)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			w.WriteHeader(http.StatusInternalServerError)
+			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		fmt.Fprintf(w, string(b))
