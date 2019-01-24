@@ -92,6 +92,7 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 	}
 
 	result := new(GetActionsResult)
+	result.Actions = make([]Action, 0)
 	for _, hit := range searchResult.Hits.Hits {
 		if hit.Source == nil {
 			continue
@@ -231,7 +232,7 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKe
 
 func getControlledAccounts(client *elastic.Client, params GetControlledAccountsParams) (*GetControlledAccountsResult, error) {
 	query := elastic.NewBoolQuery()
-	query = query.Filter(elastic.NewMatchQuery("name", params.ControllingAccount)) //Is it better to convert name to number and search by id?
+	query = query.Filter(elastic.NewMatchQuery("name.keyword", params.ControllingAccount)) //Is it better to convert name to number and search by id?
 	searchResult, err := client.Search().
 		Index(AccountsIndex).
 		Query(query).
@@ -241,7 +242,7 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 	}
 
 	result := new(GetControlledAccountsResult)
-	result.AccountNames = make([]json.RawMessage, 0)
+	result.ControlledAccounts = make([]json.RawMessage, 0)
 	for _, hit := range searchResult.Hits.Hits {
 		if hit.Source == nil {
 			continue
@@ -256,7 +257,7 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 		if err != nil {
 			return nil, errors.New("Failed to parse ES response")
 		}
-		result.AccountNames = append(result.AccountNames, accounts...)
+		result.ControlledAccounts = append(result.ControlledAccounts, accounts...)
 	}
 	return result, nil
 }

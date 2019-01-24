@@ -54,5 +54,5 @@ type GetControlledAccountsParams struct {
 }
 
 type GetControlledAccountsResult struct {
-	AccountNames []json.RawMessage `json:"account_names"`
+	ControlledAccounts []json.RawMessage `json:"controlled_accounts"`
 }
