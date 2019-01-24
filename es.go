@@ -33,7 +33,7 @@ func getBlock(client *elastic.Client, id string) (*json.RawMessage, error) {
 func getPackedTx(block *json.RawMessage, trxId string) json.RawMessage {
 	var blockSource map[string]*json.RawMessage
 	err := json.Unmarshal(*block, &blockSource)
-	if err != nil {
+	if err != nil || blockSource["transactions"] == nil {
 		return json.RawMessage{}
 	}
 
@@ -45,12 +45,14 @@ func getPackedTx(block *json.RawMessage, trxId string) json.RawMessage {
 	for _, rawTx := range transactions {
 		var tx map[string]*json.RawMessage
 		err := json.Unmarshal(rawTx, &tx)
-		if err != nil {
+		if err != nil || tx["trx"] == nil {
 			return json.RawMessage{}
 		}
 		var trx map[string]*json.RawMessage
 		err = json.Unmarshal(*tx["trx"], &trx)
-		if err != nil {
+		if err != nil || trx["id"] == nil || trx["signatures"] == nil ||
+			trx["compression"] == nil || trx["packed_context_free_data"] == nil ||
+			trx["packed_trx"] == nil {
 			return json.RawMessage{}
 		}
 
@@ -99,38 +101,23 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 			continue
 		}
 
-		var source map[string]*json.RawMessage
-		err = json.Unmarshal(*hit.Source, &source)
+		var actionTrace ActionTrace
+		err = json.Unmarshal(*hit.Source, &actionTrace)
 		if err != nil {
 			continue
 		}
-		var act map[string]*json.RawMessage
-		err = json.Unmarshal(*source["act"], &act)
+		unquotedData, err := strconv.Unquote(string(actionTrace.Act.Data))
 		if err != nil {
 			continue
 		}
-		unquotedData, err := strconv.Unquote(string(*act["data"]))
+		actionTrace.Act.Data = []byte(unquotedData)
+		bytes, err := json.Marshal(actionTrace)
 		if err != nil {
 			continue
 		}
-		*act["data"] = []byte(unquotedData)
-		b, err := json.Marshal(act)
-		if err != nil {
-			continue
-		}
-		*source["act"] = b
-		var receipt map[string]*json.RawMessage
-		err = json.Unmarshal(*source["receipt"], &receipt)
-		if err != nil {
-			continue
-		}
-		b, err = json.Marshal(source)
-		if err != nil {
-			continue
-		}
-		action := Action { GlobalActionSeq: *receipt["global_sequence"],
-			BlockNum: *source["block_num"], BlockTime: *source["block_time"],
-			ActionTrace: b }
+		action := Action { GlobalActionSeq: actionTrace.Receipt.GlobalSequence,
+			BlockNum: actionTrace.BlockNum, BlockTime: actionTrace.BlockTime,
+			ActionTrace: bytes }
 		result.Actions = append(result.Actions, action)
 	}
 	return result, nil
