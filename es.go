@@ -92,7 +92,7 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 	}
 
 	result := new(GetActionsResult)
-	result.Actions = make([]Action, 0)
+	result.Actions = make([]Action, 0, len(searchResult.Hits.Hits))
 	for _, hit := range searchResult.Hits.Hits {
 		if hit.Source == nil {
 			continue
@@ -214,7 +214,7 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKe
 	}
 
 	result := new(GetKeyAccountsResult)
-	result.AccountNames = make([]json.RawMessage, 0)
+	result.AccountNames = make([]json.RawMessage, 0, len(searchResult.Hits.Hits))
 	for _, hit := range searchResult.Hits.Hits {
 		if hit.Source == nil {
 			continue
@@ -242,7 +242,7 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 	}
 
 	result := new(GetControlledAccountsResult)
-	result.ControlledAccounts = make([]json.RawMessage, 0)
+	result.ControlledAccounts = make([]json.RawMessage, 0, len(searchResult.Hits.Hits))
 	for _, hit := range searchResult.Hits.Hits {
 		if hit.Source == nil {
 			continue
