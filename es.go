@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"strconv"
 	"encoding/json"
 	"github.com/olivere/elastic"
 	"context"
@@ -15,66 +14,50 @@ const TransactionTracesIndex string = "transaction_traces"
 const ActionTracesIndex      string = "action_traces"
 
 
-func getBlock(client *elastic.Client, id string) (*json.RawMessage, error) {
+func getActionTrace(client *elastic.Client, txId string, actionSeq uint64) (json.RawMessage, error) {
 	getResult, err := client.Get().
-		Index(BlocksIndex).
-		Id(id).
+		Index(TransactionTracesIndex).
+		Id(txId).
 		Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	if !getResult.Found || getResult.Source == nil {
-		return nil, errors.New("Block not found")
+		return nil, errors.New("Action trace not found")
 	}
-	return getResult.Source, nil
-}
-
-
-func getPackedTx(block *json.RawMessage, trxId string) json.RawMessage {
-	var blockSource map[string]*json.RawMessage
-	err := json.Unmarshal(*block, &blockSource)
-	if err != nil || blockSource["transactions"] == nil {
-		return json.RawMessage{}
+	var txTraceSource map[string]*json.RawMessage
+	err = json.Unmarshal(*getResult.Source, &txTraceSource)
+	if err != nil || txTraceSource["action_traces"] == nil {
+		return nil, errors.New("Failed to parse ES response")
 	}
-
-	var transactions []json.RawMessage
-	err = json.Unmarshal(*blockSource["transactions"], &transactions)
+	var actionTraces []map[string]*json.RawMessage
+	err = json.Unmarshal(*txTraceSource["action_traces"], &actionTraces)
 	if err != nil {
-		return json.RawMessage{}
+		return nil, errors.New("Failed to parse ES response")
 	}
-	for _, rawTx := range transactions {
-		var tx map[string]*json.RawMessage
-		err := json.Unmarshal(rawTx, &tx)
-		if err != nil || tx["trx"] == nil {
-			return json.RawMessage{}
+	for _, trace := range actionTraces {
+		if trace["receipt"] == nil {
+			continue
 		}
-		var trx map[string]*json.RawMessage
-		err = json.Unmarshal(*tx["trx"], &trx)
-		if err != nil || trx["id"] == nil || trx["signatures"] == nil ||
-			trx["compression"] == nil || trx["packed_context_free_data"] == nil ||
-			trx["packed_trx"] == nil {
-			return json.RawMessage{}
+		var receipt map[string]*json.RawMessage
+		err = json.Unmarshal(*trace["receipt"], &receipt)
+		if err != nil || receipt["global_sequence"] == nil {
+			continue
 		}
-
-		var id string
-		err = json.Unmarshal(*trx["id"], &id)
+		var n uint64
+		err = json.Unmarshal(*receipt["global_sequence"], &n)
 		if err != nil {
-			return json.RawMessage{}
+			continue
 		}
-		if id == trxId {
-			data := make(map[string]json.RawMessage)
-			data["signatures"] = *trx["signatures"]
-			data["compression"] = *trx["compression"]
-			data["packed_context_free_data"] = *trx["packed_context_free_data"]
-			data["packed_trx"] = *trx["packed_trx"]
-			byteTrx, err := json.Marshal(data)
+		if n == actionSeq {
+			bytes, err := json.Marshal(trace)
 			if err != nil {
-				return json.RawMessage{}
+				return nil, errors.New("Failed to parse ES response")
 			}
-			return byteTrx
+			return bytes, nil
 		}
 	}
-	return json.RawMessage{}
+	return nil, errors.New("Action trace not found")
 }
 
 
@@ -106,18 +89,13 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 		if err != nil {
 			continue
 		}
-		unquotedData, err := strconv.Unquote(string(actionTrace.Act.Data))
-		if err != nil {
-			continue
-		}
-		actionTrace.Act.Data = []byte(unquotedData)
-		bytes, err := json.Marshal(actionTrace)
+		trace, err := getActionTrace(client, actionTrace.TrxId, actionTrace.Receipt.GlobalSequence)
 		if err != nil {
 			continue
 		}
 		action := Action { GlobalActionSeq: actionTrace.Receipt.GlobalSequence,
 			BlockNum: actionTrace.BlockNum, BlockTime: actionTrace.BlockTime,
-			ActionTrace: bytes }
+			ActionTrace: trace }
 		result.Actions = append(result.Actions, action)
 	}
 	return result, nil
@@ -154,18 +132,6 @@ func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTr
 		return nil, errors.New("Failed to parse ES response")
 	}
 
-	var blockId string
-	err = json.Unmarshal(*txTraceSource["producer_block_id"], &blockId)
-	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
-	block, err := getBlock(client, blockId)
-	if err != nil {
-		return nil, err
-	}
-	packed_trx := getPackedTx(block, params.Id)
-	
-
 	result := new(GetTransactionResult)
 	result.Id = params.Id
 	result.Trx = make(map[string]json.RawMessage)
@@ -189,22 +155,7 @@ func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTr
 		return nil, errors.New("Failed to parse ES response")
 	}
 	result.Trx["trx"] = byteTrx
-	receipt := make(map[string]json.RawMessage)
-	err = json.Unmarshal(*txTraceSource["receipt"], &receipt)
-	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
-	receiptTrx := []interface{}{1, packed_trx}
-	byteReceiptTrx, err := json.Marshal(receiptTrx)
-	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
-	receipt["trx"] = byteReceiptTrx
-	byteReceipt, err := json.Marshal(receipt)
-	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
-	result.Trx["receipt"] = byteReceipt
+	result.Trx["receipt"] = *txTraceSource["receipt"]
 	return result, nil
 }
 
