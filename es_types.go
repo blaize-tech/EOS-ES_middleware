@@ -32,3 +32,16 @@ type ActionTrace struct {
 	AccountRamDeltas json.RawMessage `json:"account_ram_deltas"`
 	Except           json.RawMessage `json:"except"`
 }
+
+
+type Account struct {
+	Name    json.RawMessage `json:"name"`
+	Creator json.RawMessage `json:"creator"`
+	PubKeys json.RawMessage `json:"pub_keys"`
+	AccountControls [] struct {
+		Name       json.RawMessage `json:"name"`
+		Permission json.RawMessage `json:"permission"`
+	} `json:"account_controls"`
+	Abi               json.RawMessage `json:"abi"`
+	AccountCreateTime json.RawMessage `json:"account_create_time"`
+}

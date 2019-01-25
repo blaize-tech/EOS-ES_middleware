@@ -205,17 +205,14 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 		if hit.Source == nil {
 			continue
 		}
-		var objmap map[string]*json.RawMessage
-		err := json.Unmarshal(*hit.Source, &objmap)
+		var account Account
+		err := json.Unmarshal(*hit.Source, &account)
 		if err != nil {
 			return nil, errors.New("Failed to parse ES response")
 		}
-		var accounts []json.RawMessage
-		err = json.Unmarshal(*objmap["account_controls"], &accounts)
-		if err != nil {
-			return nil, errors.New("Failed to parse ES response")
+		for _, acc := range account.AccountControls {
+			result.ControlledAccounts = append(result.ControlledAccounts, acc.Name)
 		}
-		result.ControlledAccounts = append(result.ControlledAccounts, accounts...)
 	}
 	return result, nil
 }
