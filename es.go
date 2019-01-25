@@ -25,22 +25,14 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq uint64) (json
 	if !getResult.Found || getResult.Source == nil {
 		return nil, errors.New("Action trace not found")
 	}
-	var txTraceSource map[string]*json.RawMessage
-	err = json.Unmarshal(*getResult.Source, &txTraceSource)
-	if err != nil || txTraceSource["action_traces"] == nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
-	var actionTraces []map[string]*json.RawMessage
-	err = json.Unmarshal(*txTraceSource["action_traces"], &actionTraces)
+	var txTrace TransactionTrace
+	err = json.Unmarshal(*getResult.Source, &txTrace)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
-	for _, trace := range actionTraces {
-		if trace["receipt"] == nil {
-			continue
-		}
+	for _, trace := range txTrace.ActionTraces {
 		var receipt map[string]*json.RawMessage
-		err = json.Unmarshal(*trace["receipt"], &receipt)
+		err = json.Unmarshal(trace.Receipt, &receipt)
 		if err != nil || receipt["global_sequence"] == nil {
 			continue
 		}
@@ -120,14 +112,14 @@ func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTr
 	if !(docTx.Found && docTxTrace.Found) {
 		return nil, errors.New("Transaction not found")
 	}
-
-	var txSource map[string]*json.RawMessage
-	err = json.Unmarshal(*docTx.Source, &txSource)
+	
+	var transaction Transaction
+	err = json.Unmarshal(*docTx.Source, &transaction)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
-	var txTraceSource map[string]*json.RawMessage
-	err = json.Unmarshal(*docTxTrace.Source, &txTraceSource)
+	var txTrace TransactionTrace
+	err = json.Unmarshal(*docTxTrace.Source, &txTrace)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
@@ -135,27 +127,30 @@ func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTr
 	result := new(GetTransactionResult)
 	result.Id = params.Id
 	result.Trx = make(map[string]json.RawMessage)
-	result.BlockTime = *txTraceSource["block_time"]
-	result.BlockNum = *txSource["block_num"]
-	result.Traces = *txTraceSource["action_traces"]
+	result.BlockTime = txTrace.BlockTime
+	result.BlockNum = transaction.BlockNum
+	result.Traces, err = json.Marshal(txTrace.ActionTraces)
+	if err != nil {
+		return nil, errors.New("Internal error")
+	}
 	trx := make(map[string]json.RawMessage)
-	trx["expiration"] = *txSource["expiration"]
-	trx["ref_block_num"] = *txSource["ref_block_num"]
-	trx["ref_block_prefix"] = *txSource["ref_block_prefix"]
-	trx["max_net_usage_words"] = *txSource["max_net_usage_words"]
-	trx["max_cpu_usage_ms"] = *txSource["max_cpu_usage_ms"]
-	trx["delay_sec"] = *txSource["delay_sec"]
-	trx["context_free_actions"] = *txSource["context_free_actions"]
-	trx["actions"] = *txSource["actions"]
-	trx["transaction_extensions"] = *txSource["transaction_extensions"]
-	trx["signatures"] = *txSource["signatures"]
-	trx["context_free_data"] = *txSource["context_free_data"]
+	trx["expiration"] = transaction.Expiration
+	trx["ref_block_num"] = transaction.RefBlockNum
+	trx["ref_block_prefix"] = transaction.RefBlockPrefix
+	trx["max_net_usage_words"] = transaction.MaxNetUsageWords
+	trx["max_cpu_usage_ms"] = transaction.MaxCpuUsageMs
+	trx["delay_sec"] = transaction.DelaySec
+	trx["context_free_actions"] = transaction.ContextFreeActions
+	trx["actions"] = transaction.Actions
+	trx["transaction_extensions"] = transaction.TransactionExtensions
+	trx["signatures"] = transaction.Signatures
+	trx["context_free_data"] = transaction.ContextFreeData
 	byteTrx, err := json.Marshal(trx)
 	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
+		return nil, errors.New("Internal error")
 	}
 	result.Trx["trx"] = byteTrx
-	result.Trx["receipt"] = *txTraceSource["receipt"]
+	result.Trx["receipt"] = txTrace.Receipt
 	return result, nil
 }
 
@@ -177,12 +172,12 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKe
 		if hit.Source == nil {
 			continue
 		}
-		var objmap map[string]*json.RawMessage
-		err := json.Unmarshal(*hit.Source, &objmap)
+		var account Account
+		err := json.Unmarshal(*hit.Source, &account)
 		if err != nil {
 			return nil, errors.New("Failed to parse ES response")
 		}
-		result.AccountNames = append(result.AccountNames, *objmap["name"])
+		result.AccountNames = append(result.AccountNames, account.Name)
 	}
 	return result, nil
 }
