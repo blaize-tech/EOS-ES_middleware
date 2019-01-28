@@ -28,3 +28,37 @@ Run with
 ```sh
 $ go run *.go
 ```
+
+## Usage
+This API supports following GET requests:  
+
+#### /v1/history/get_actions
+Requires json body with the following properties:  
+account_name - name of the eos account. This field is required.  
+pos - position in a list of account actions sorted by global_sequence (e.g. in chronological order). This field is not required.  
+offset - number of actions to return. This field is not required.  
+  
+Returns json with the following properties:  
+actions - array of actions of given account  
+#### /v1/history/get_transaction
+Requires json body with the following properties:  
+id - id of transaction.  
+  
+Returns json with the following properties:  
+id - id of transaction.  
+trx - transaction.  
+block_time - timestamp of block which contains requested transaction.  
+block_num - number of block which contains requested transaction.  
+traces - traces of transaction.  
+#### /v1/history/get_key_accounts
+Requires json body with the following properties:  
+public_key - public key of account
+  
+Returns json with the following properties:  
+account_names - array of accounts that have requested key  
+#### /v1/history/get_controlled_accounts
+Requires json body with the following properties:  
+controlling_account - name of the eos account  
+  
+Returns json with the following properties:  
+controlled_accounts - array of accounts controlled by requested account  
