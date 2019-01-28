@@ -37,12 +37,24 @@ Requires json body with the following properties:
 account_name - name of the eos account. This field is required.  
 pos - position in a list of account actions sorted by global_sequence (e.g. in chronological order). This field is not required.  
 offset - number of actions to return. This field is not required.  
+Example of request body:
+
+    {
+        "account_name": "eosio",
+        "pos": 0,
+        "offset": 10
+    }
   
 Returns json with the following properties:  
 actions - array of actions of given account  
 #### /v1/history/get_transaction
 Requires json body with the following properties:  
 id - id of transaction.  
+Example of request body:
+
+    {
+        "id": "e6c814f9ba58e2aedd654abfdefc99c98f3e4bf5f20e4820b7d212f38f1f6f13"
+    }
   
 Returns json with the following properties:  
 id - id of transaction.  
@@ -53,12 +65,22 @@ traces - traces of transaction.
 #### /v1/history/get_key_accounts
 Requires json body with the following properties:  
 public_key - public key of account
+Example of request body:
+
+    {
+        "public_key": "EOS81Z5dYnSnfzdNFViMcGQoYUqrgZSdKJ69mvsnp2CLH2ufqX8Y9"
+    }
   
 Returns json with the following properties:  
 account_names - array of accounts that have requested key  
 #### /v1/history/get_controlled_accounts
 Requires json body with the following properties:  
 controlling_account - name of the eos account  
+Example of request body:
+
+    {
+        "controlling_account": "eosio"
+    }
   
 Returns json with the following properties:  
 controlled_accounts - array of accounts controlled by requested account  
