@@ -10,6 +10,10 @@ import (
 
 
 const ApiPath string = "/v1/history/"
+const AccountsIndexPrefix          string = "accounts"
+const TransactionsIndexPrefix      string = "transactions"
+const TransactionTracesIndexPrefix string = "transaction_traces"
+const ActionTracesIndexPrefix      string = "action_traces"
 
 
 type Config struct {
@@ -19,8 +23,9 @@ type Config struct {
 
 
 type Server struct {
+	ElasticUrl string
     ElasticClient *elastic.Client
-    //router *someRouter //not sure
+    Indices map[string][]string
 }
 
 
@@ -40,6 +45,8 @@ func (s *Server) initElasticClient(url string) {
 		panic(err)
 	} else {
 		s.ElasticClient = client
+		s.ElasticUrl = url
+		s.getIndices()
 	}
 }
 
@@ -67,6 +74,15 @@ func (s *Server) onlyGet(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) getIndices() {
+	prefixes := []string {
+		AccountsIndexPrefix,
+		TransactionsIndexPrefix,
+		TransactionTracesIndexPrefix,
+		ActionTracesIndexPrefix }
+	s.Indices = getIndices(s.ElasticUrl, prefixes)
+}
+
 //handleGetActions returns http handler that takes
 //http.ResponseWriter and *http.Request as arguments
 //it tries to parse parameters from request body
@@ -75,6 +91,7 @@ func (s *Server) onlyGet(h http.HandlerFunc) http.HandlerFunc {
 func (s *Server) handleGetActions() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -99,7 +116,7 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 			*params.Offset = 0
 		}
 
-		result, err := getActions(s.ElasticClient, params)
+		result, err := getActions(s.ElasticClient, params, s.Indices)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -125,6 +142,7 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 func (s *Server) handleGetTransaction() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -141,7 +159,7 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 			return
 		}
 
-		result, err := getTransaction(s.ElasticClient, params)
+		result, err := getTransaction(s.ElasticClient, params, s.Indices)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -167,6 +185,7 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 func (s *Server) handleGetKeyAccounts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -183,7 +202,7 @@ func (s *Server) handleGetKeyAccounts() http.HandlerFunc {
 			return
 		}
 		
-		result, err := getKeyAccounts(s.ElasticClient, params)
+		result, err := getKeyAccounts(s.ElasticClient, params, s.Indices)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -209,6 +228,7 @@ func (s *Server) handleGetKeyAccounts() http.HandlerFunc {
 func (s *Server) handleGetControlledAccounts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
+		defer r.Body.Close()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -225,7 +245,7 @@ func (s *Server) handleGetControlledAccounts() http.HandlerFunc {
 			return
 		}
 
-		result, err := getControlledAccounts(s.ElasticClient, params)
+		result, err := getControlledAccounts(s.ElasticClient, params, s.Indices)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }

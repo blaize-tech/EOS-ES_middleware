@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"github.com/olivere/elastic"
 	"context"
+	"net/http"
+	"bufio"
+	"regexp"
+	"strings"
 )
 
 const AccountsIndex          string = "accounts"
@@ -14,15 +18,54 @@ const TransactionTracesIndex string = "transaction_traces"
 const ActionTracesIndex      string = "action_traces"
 
 
-func getActionTrace(client *elastic.Client, txId string, actionSeq uint64) (json.RawMessage, error) {
-	getResult, err := client.Get().
-		Index(TransactionTracesIndex).
-		Id(txId).
-		Do(context.Background())
+//get index list from ES and parse indices from it
+//return a map where every prefix from input array is a key
+//and a value is vector of corresponding indices
+func getIndices(esUrl string, prefixes []string) map[string][]string {
+	result := make(map[string][]string)
+	resp, err := http.Get(esUrl + "/_cat/indices?v&s=index")
 	if err != nil {
+		return result
+	}
+	defer resp.Body.Close()
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Split(bufio.ScanLines)
+
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	for _, prefix := range prefixes {
+		r, _ := regexp.Compile("\\s" + prefix + "-(\\d)*\\s")
+		for _, line := range lines {
+			match := r.FindString(line)
+			if len(match) != 0 {
+				result[prefix] = append(result[prefix], strings.TrimSpace(match))
+			}
+		}
+	}
+	return result
+}
+
+
+func getActionTrace(client *elastic.Client, txId string, actionSeq uint64, indices map[string][]string) (json.RawMessage, error) {
+	multiGet := client.MultiGet()
+	for _, index := range indices[TransactionTracesIndexPrefix] {
+		multiGet.Add(elastic.NewMultiGetItem().Index(index).Id(txId))
+	}
+	mgetResult, err := multiGet.Do(context.Background())
+	if err != nil || mgetResult == nil || mgetResult.Docs == nil {
 		return nil, err
 	}
-	if !getResult.Found || getResult.Source == nil {
+	var getResult *elastic.GetResult
+	for _, doc := range mgetResult.Docs {
+		if doc == nil || doc.Error != nil || !doc.Found {
+			continue
+		}
+		getResult = doc
+	}
+
+	if getResult == nil || !getResult.Found || getResult.Source == nil {
 		return nil, errors.New("Action trace not found")
 	}
 	var txTrace TransactionTrace
@@ -53,25 +96,43 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq uint64) (json
 }
 
 
-func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsResult, error) {
+func getActions(client *elastic.Client, params GetActionsParams, indices map[string][]string) (*GetActionsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
-	search := client.Search().
-		Index(ActionTracesIndex).
-		Query(query).
-		Sort("receipt.global_sequence", true). //from old to recent
-		From(int(*params.Pos))
-	if *params.Offset > 0 {
-		search = search.Size(int(*params.Offset))
+	msearch := client.MultiSearch()
+	for _, index := range indices[ActionTracesIndexPrefix] {
+		sreq := elastic.NewSearchRequest().
+			Index(index).Query(query).
+			Sort("receipt.global_sequence", true).
+			From(int(*params.Pos))
+		if *params.Offset > 0 {
+			sreq = sreq.Size(int(*params.Offset))
+		}
+		msearch.Add(sreq)
 	}
-	searchResult, err := search.Do(context.Background())
-	if err != nil {
+	msearchResult, err := msearch.Do(context.Background())
+	if err != nil || msearchResult == nil || msearchResult.Responses == nil {
 		return nil, err
 	}
 
+	var searchHits []elastic.SearchHit
+	for _, resp := range msearchResult.Responses {
+		if resp == nil || resp.Error != nil {
+			continue
+		}
+		for _, hit := range resp.Hits.Hits {
+			if hit != nil && len(searchHits) < int(*params.Offset) {
+				searchHits = append(searchHits, *hit)
+			}
+		}
+		if len(searchHits) == int(*params.Offset) {
+			break
+		}
+	}
+	
 	result := new(GetActionsResult)
-	result.Actions = make([]Action, 0, len(searchResult.Hits.Hits))
-	for _, hit := range searchResult.Hits.Hits {
+	result.Actions = make([]Action, 0, len(searchHits))
+	for _, hit := range searchHits {
 		if hit.Source == nil {
 			continue
 		}
@@ -81,7 +142,7 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 		if err != nil {
 			continue
 		}
-		trace, err := getActionTrace(client, actionTrace.TrxId, actionTrace.Receipt.GlobalSequence)
+		trace, err := getActionTrace(client, actionTrace.TrxId, actionTrace.Receipt.GlobalSequence, indices)
 		if err != nil {
 			continue
 		}
@@ -94,32 +155,51 @@ func getActions(client *elastic.Client, params GetActionsParams) (*GetActionsRes
 }
 
 
-func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTransactionResult, error) {
-	getResult, err := client.MultiGet().
-		Add(elastic.NewMultiGetItem().Index(TransactionsIndex).Id(params.Id)).
-		Add(elastic.NewMultiGetItem().Index(TransactionTracesIndex).Id(params.Id)).
-		Do(context.Background())
-	if err != nil {
+func getTransaction(client *elastic.Client, params GetTransactionParams, indices map[string][]string) (*GetTransactionResult, error) {
+	mgetTx := client.MultiGet()
+	mgetTxTrace := client.MultiGet()
+	for _, index := range indices[TransactionsIndexPrefix] {
+		mgetTx.Add(elastic.NewMultiGetItem().Index(index).Id(params.Id))
+	}
+	for _, index := range indices[TransactionTracesIndexPrefix] {
+		mgetTxTrace.Add(elastic.NewMultiGetItem().Index(index).Id(params.Id))
+	}
+	mgetTxResult, err := mgetTx.Do(context.Background())
+	if err != nil || mgetTxResult == nil || mgetTxResult.Docs == nil {
 		return nil, err
 	}
-	if getResult == nil || getResult.Docs == nil || len(getResult.Docs) != 2 ||
-		getResult.Docs[0].Error != nil || getResult.Docs[1].Error != nil {
-		return nil, errors.New("Failed to query ES")
+	mgetTxTraceResult, err := mgetTxTrace.Do(context.Background())
+	if err != nil || mgetTxTraceResult == nil || mgetTxTraceResult.Docs == nil {
+		return nil, err
 	}
-	docTx := getResult.Docs[0]
-	docTxTrace := getResult.Docs[1]
 
-	if !(docTx.Found && docTxTrace.Found) {
+	var getTxResult *elastic.GetResult
+	for _, doc := range mgetTxResult.Docs {
+		if doc == nil || doc.Error != nil || !doc.Found {
+			continue
+		}
+		getTxResult = doc
+	}
+	var getTxTraceResult *elastic.GetResult
+	for _, doc := range mgetTxTraceResult.Docs {
+		if doc == nil || doc.Error != nil || !doc.Found {
+			continue
+		}
+		getTxTraceResult = doc
+	}
+
+	if getTxResult == nil || getTxTraceResult == nil || 
+		!getTxResult.Found || !getTxTraceResult.Found {
 		return nil, errors.New("Transaction not found")
 	}
 	
 	var transaction Transaction
-	err = json.Unmarshal(*docTx.Source, &transaction)
+	err = json.Unmarshal(*getTxResult.Source, &transaction)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
 	var txTrace TransactionTrace
-	err = json.Unmarshal(*docTxTrace.Source, &txTrace)
+	err = json.Unmarshal(*getTxTraceResult.Source, &txTrace)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
@@ -155,20 +235,32 @@ func getTransaction(client *elastic.Client, params GetTransactionParams) (*GetTr
 }
 
 
-func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKeyAccountsResult, error) {
+func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams, indices map[string][]string) (*GetKeyAccountsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Filter(elastic.NewMatchQuery("pub_keys.key", params.PublicKey))
-	searchResult, err := client.Search().
-		Index(AccountsIndex).
-		Query(query).
-		Do(context.Background())
-	if err != nil {
+	msearch := client.MultiSearch()
+	for _, index := range indices[AccountsIndexPrefix] {
+		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query))
+	}
+	msearchResult, err := msearch.Do(context.Background())
+	if err != nil || msearchResult == nil || msearchResult.Responses == nil {
 		return nil, err
+	}
+	var searchHits []elastic.SearchHit
+	for _, resp := range msearchResult.Responses {
+		if resp == nil || resp.Error != nil {
+			continue
+		}
+		for _, hit := range resp.Hits.Hits {
+			if hit != nil {
+				searchHits = append(searchHits, *hit)
+			}
+		}
 	}
 
 	result := new(GetKeyAccountsResult)
-	result.AccountNames = make([]json.RawMessage, 0, len(searchResult.Hits.Hits))
-	for _, hit := range searchResult.Hits.Hits {
+	result.AccountNames = make([]json.RawMessage, 0, len(searchHits))
+	for _, hit := range searchHits {
 		if hit.Source == nil {
 			continue
 		}
@@ -183,20 +275,32 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams) (*GetKe
 }
 
 
-func getControlledAccounts(client *elastic.Client, params GetControlledAccountsParams) (*GetControlledAccountsResult, error) {
+func getControlledAccounts(client *elastic.Client, params GetControlledAccountsParams, indices map[string][]string) (*GetControlledAccountsResult, error) {
 	query := elastic.NewBoolQuery()
 	query = query.Filter(elastic.NewMatchQuery("name.keyword", params.ControllingAccount)) //Is it better to convert name to number and search by id?
-	searchResult, err := client.Search().
-		Index(AccountsIndex).
-		Query(query).
-		Do(context.Background())
-	if err != nil {
+	msearch := client.MultiSearch()
+	for _, index := range indices[AccountsIndexPrefix] {
+		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query))
+	}
+	msearchResult, err := msearch.Do(context.Background())
+	if err != nil || msearchResult == nil || msearchResult.Responses == nil {
 		return nil, err
+	}
+	var searchHits []elastic.SearchHit
+	for _, resp := range msearchResult.Responses {
+		if resp == nil || resp.Error != nil {
+			continue
+		}
+		for _, hit := range resp.Hits.Hits {
+			if hit != nil {
+				searchHits = append(searchHits, *hit)
+			}
+		}
 	}
 
 	result := new(GetControlledAccountsResult)
-	result.ControlledAccounts = make([]json.RawMessage, 0, len(searchResult.Hits.Hits))
-	for _, hit := range searchResult.Hits.Hits {
+	result.ControlledAccounts = make([]json.RawMessage, 0, len(searchHits))
+	for _, hit := range searchHits {
 		if hit.Source == nil {
 			continue
 		}
