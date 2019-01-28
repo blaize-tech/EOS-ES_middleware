@@ -109,11 +109,11 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 		}
 		if params.Pos == nil {
 			params.Pos = new(int64)
-			*params.Pos = 0
+			*params.Pos = -1
 		}
 		if params.Offset == nil {
 			params.Offset = new(int64)
-			*params.Offset = 0
+			*params.Offset = -20
 		}
 
 		result, err := getActions(s.ElasticClient, params, s.Indices)

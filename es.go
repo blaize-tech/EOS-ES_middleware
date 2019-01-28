@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"regexp"
 	"strings"
+	"math"
 )
 
 const AccountsIndex          string = "accounts"
@@ -97,17 +98,31 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq uint64, indic
 
 
 func getActions(client *elastic.Client, params GetActionsParams, indices map[string][]string) (*GetActionsResult, error) {
+	ascOrder := true
+	if *params.Pos < 0 {
+		ascOrder = false
+		*params.Pos = int64(math.Abs(float64(*params.Pos))) - 1
+		*params.Offset = -*params.Offset
+	}
+	pos1 := *params.Pos
+	pos2 := *params.Pos + *params.Offset
+	start := int64(math.Min(float64(pos1), float64(pos2)))
+	if start < 0 {
+		*params.Offset = int64(math.Abs(float64(*params.Offset - start)))
+		start = 0
+	}
+	if *params.Offset < 0 {
+		*params.Offset = int64(math.Abs(float64(*params.Offset)))
+	}
+	
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
 	msearch := client.MultiSearch()
 	for _, index := range indices[ActionTracesIndexPrefix] {
 		sreq := elastic.NewSearchRequest().
 			Index(index).Query(query).
-			Sort("receipt.global_sequence", true).
-			From(int(*params.Pos))
-		if *params.Offset > 0 {
-			sreq = sreq.Size(int(*params.Offset))
-		}
+			Sort("receipt.global_sequence", ascOrder).
+			From(int(start)).Size(int(*params.Offset))
 		msearch.Add(sreq)
 	}
 	msearchResult, err := msearch.Do(context.Background())
@@ -116,7 +131,13 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 	}
 
 	var searchHits []elastic.SearchHit
-	for _, resp := range msearchResult.Responses {
+	for i, _ := range msearchResult.Responses {
+		var resp *elastic.SearchResult
+		if ascOrder {
+			resp = msearchResult.Responses[i]
+		} else {
+			resp = msearchResult.Responses[len(msearchResult.Responses)-1-i]
+		}
 		if resp == nil || resp.Error != nil {
 			continue
 		}
