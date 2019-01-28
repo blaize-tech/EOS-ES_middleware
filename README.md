@@ -23,3 +23,8 @@ For example:
         "port": 9000,
         "elastic_url": "http://127.0.0.1:9201"
     }
+#### Run
+Run with  
+```sh
+$ go run *.go
+```
