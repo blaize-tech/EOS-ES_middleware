@@ -14,9 +14,9 @@ $ git checkout dev
 $ dep ensure
 ```
 #### Create config.json
-In project directory create file config.json.
-Set port on which server will listen.
-Set url of elasticsearch cluster.
+In project directory create file config.json.  
+"port" property is for the port on which server will listen.  
+"elastic_url" property is for the url of elasticsearch cluster.  
 For example:
 
     {
