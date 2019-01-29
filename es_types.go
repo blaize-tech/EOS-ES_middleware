@@ -9,7 +9,7 @@ type ActionTrace struct {
 	Receipt struct {
 		Receiver     json.RawMessage `json:"receiver"`
 		ActDigest    json.RawMessage `json:"act_digest"`
-		GlobalSequence        uint64 `json:"global_sequence"`
+		GlobalSequence   interface{} `json:"global_sequence"`
 		RecvSequence json.RawMessage `json:"recv_sequence"`
 		AuthSequence json.RawMessage `json:"auth_sequence"`
 		CodeSequence json.RawMessage `json:"code_sequence"`
