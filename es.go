@@ -49,6 +49,29 @@ func getIndices(esUrl string, prefixes []string) map[string][]string {
 }
 
 
+func findActionTrace(txTrace *TransactionTrace, actionSeq uint64) (*TransactionTraceActionTrace, error) {
+	actionTraces := txTrace.ActionTraces
+	trace := new(TransactionTraceActionTrace)
+	for len(actionTraces) > 0 {
+		trace = &actionTraces[0]
+		var receipt map[string]*json.RawMessage
+		err := json.Unmarshal(trace.Receipt, &receipt)
+		if err != nil || receipt["global_sequence"] == nil {
+			continue
+		}
+		var seq uint64
+		err = json.Unmarshal(*receipt["global_sequence"], &seq)
+		if err != nil {
+			continue
+		}
+		if seq == actionSeq {
+			return trace, nil
+		}
+		actionTraces = append(actionTraces[1:len(actionTraces)], trace.InlineTraces...)
+	}
+	return nil, errors.New("Action trace not found in transaction trace")
+}
+
 func getActionTrace(client *elastic.Client, txId string, actionSeq uint64, indices map[string][]string) (json.RawMessage, error) {
 	multiGet := client.MultiGet()
 	for _, index := range indices[TransactionTracesIndexPrefix] {
@@ -74,26 +97,16 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq uint64, indic
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
-	for _, trace := range txTrace.ActionTraces {
-		var receipt map[string]*json.RawMessage
-		err = json.Unmarshal(trace.Receipt, &receipt)
-		if err != nil || receipt["global_sequence"] == nil {
-			continue
-		}
-		var n uint64
-		err = json.Unmarshal(*receipt["global_sequence"], &n)
-		if err != nil {
-			continue
-		}
-		if n == actionSeq {
-			bytes, err := json.Marshal(trace)
-			if err != nil {
-				return nil, errors.New("Failed to parse ES response")
-			}
-			return bytes, nil
-		}
+
+	trace, err := findActionTrace(&txTrace, actionSeq)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("Action trace not found")
+	bytes, err := json.Marshal(trace)
+	if err != nil {
+		return nil, errors.New("Failed to parse ES response")
+	}
+	return bytes, nil
 }
 
 
