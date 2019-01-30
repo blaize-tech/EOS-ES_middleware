@@ -11,7 +11,6 @@ import (
 	"strings"
 	"math"
 	"strconv"
-	"fmt"
 )
 
 const AccountsIndex          string = "accounts"
@@ -51,37 +50,46 @@ func getIndices(esUrl string, prefixes []string) map[string][]string {
 }
 
 
-func findActionTrace(txTrace *TransactionTrace, actionSeq interface{}) (*TransactionTraceActionTrace, error) {
+func findActionTrace(txTrace *TransactionTrace, actionSeq json.RawMessage) (*TransactionTraceActionTrace, error) {
 	actionTraces := txTrace.ActionTraces
 	trace := new(TransactionTraceActionTrace)
 	for len(actionTraces) > 0 {
 		trace = &actionTraces[0]
+		actionTraces = append(actionTraces[1:len(actionTraces)], trace.InlineTraces...)
 		var receipt map[string]*json.RawMessage
 		err := json.Unmarshal(trace.Receipt, &receipt)
 		if err != nil || receipt["global_sequence"] == nil {
 			continue
 		}
+		var tmp interface{}
 		var seq string
-		err = json.Unmarshal(*receipt["global_sequence"], &seq)
+		var targetSeq string
+		err = json.Unmarshal(*receipt["global_sequence"], &tmp)
 		if err != nil {
 			continue
 		}
-		var actionSeqStr string
-		if i, ok := actionSeq.(float64); ok { // yeah, JSON numbers are floats, gotcha!
-			num := uint64(i)
-			actionSeqStr = strconv.FormatUint(num, 10)
-		} else if s, ok := actionSeq.(string); ok {
-			actionSeqStr = s
+		if i, ok := tmp.(float64); ok {
+			seq = strconv.FormatUint(uint64(i), 10)
+		} else if s, ok := tmp.(string); ok {
+			seq = s
 		}
-		if seq == actionSeqStr {
+		err = json.Unmarshal(actionSeq, &tmp)
+		if err != nil {
+			continue
+		}
+		if i, ok := tmp.(float64); ok {
+			targetSeq = strconv.FormatUint(uint64(i), 10)
+		} else if s, ok := tmp.(string); ok {
+			targetSeq = s
+		}
+		if seq == targetSeq {
 			return trace, nil
 		}
-		actionTraces = append(actionTraces[1:len(actionTraces)], trace.InlineTraces...)
 	}
 	return nil, errors.New("Action trace not found in transaction trace")
 }
 
-func getActionTrace(client *elastic.Client, txId string, actionSeq interface{}, indices map[string][]string) (json.RawMessage, error) {
+func getActionTrace(client *elastic.Client, txId string, actionSeq json.RawMessage, indices map[string][]string) (json.RawMessage, error) {
 	multiGet := client.MultiGet()
 	for _, index := range indices[TransactionTracesIndexPrefix] {
 		multiGet.Add(elastic.NewMultiGetItem().Index(index).Id(txId))
@@ -106,7 +114,6 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq interface{}, 
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
-
 	trace, err := findActionTrace(&txTrace, actionSeq)
 	if err != nil {
 		return nil, err
@@ -183,24 +190,13 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 		var actionTrace ActionTrace
 		err = json.Unmarshal(*hit.Source, &actionTrace)
 		if err != nil {
-			fmt.Println(err.Error())
 			continue
 		}
 		trace, err := getActionTrace(client, actionTrace.TrxId, actionTrace.Receipt.GlobalSequence, indices)
 		if err != nil {
 			continue
 		}
-		var globalActionSeq uint64
-		if i, ok := actionTrace.Receipt.GlobalSequence.(float64); ok {
-			globalActionSeq = uint64(i)
-		} else if s, ok := actionTrace.Receipt.GlobalSequence.(string); ok {
-			var err error
-			globalActionSeq, err = strconv.ParseUint(s, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-		}
-		action := Action { GlobalActionSeq: globalActionSeq,
+		action := Action { GlobalActionSeq: actionTrace.Receipt.GlobalSequence,
 			BlockNum: actionTrace.BlockNum, BlockTime: actionTrace.BlockTime,
 			ActionTrace: trace }
 		result.Actions = append(result.Actions, action)

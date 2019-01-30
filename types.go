@@ -19,10 +19,10 @@ type GetActionsParams struct {
 }
 
 type Action struct {
-	GlobalActionSeq      uint64 `json:"global_action_seq"`
-	BlockNum    json.RawMessage `json:"block_num"`
-	BlockTime   json.RawMessage `json:"block_time"`
-	ActionTrace json.RawMessage `json:"action_trace"`
+	GlobalActionSeq json.RawMessage `json:"global_action_seq"`
+	BlockNum        json.RawMessage `json:"block_num"`
+	BlockTime       json.RawMessage `json:"block_time"`
+	ActionTrace     json.RawMessage `json:"action_trace"`
 }
 
 type GetActionsResult struct {
