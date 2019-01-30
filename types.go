@@ -11,6 +11,28 @@ type ErrorResult struct {
 }
 
 
+type GetBlockParams struct {
+	BlockNum json.RawMessage `json:"block_num_or_id"`
+}
+
+type ChainGetBlockResult struct {
+	Transactions []struct {
+		Status        json.RawMessage `json:"status"`
+		CpuUsageUs    json.RawMessage `json:"cpu_usage_us"`
+		NetUsageWords json.RawMessage `json:"net_usage_words"`
+		Trx           json.RawMessage `json:"trx"`
+	} `json:"transactions"`
+}
+
+type TransactionFromBlock struct {
+	Id                             string `json:"id,omitempty"`
+	Signatures            json.RawMessage `json:"signatures"`
+	Compression           json.RawMessage `json:"compression"`
+	PackedContextFreeData json.RawMessage `json:"packed_context_free_data"`
+	PackedTrx             json.RawMessage `json:"packed_trx"`
+}
+
+
 //get_actions types
 type GetActionsParams struct {
 	AccountName string `json:"account_name"`

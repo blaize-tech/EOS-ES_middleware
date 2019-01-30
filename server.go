@@ -3,13 +3,16 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-    "net/http"
+	"net/http"
+	"bytes"
 	"encoding/json"
 	"github.com/olivere/elastic"
+	"errors"
 )
 
 
-const ApiPath string = "/v1/history/"
+const RemoteNode                   string = "http://eosbp-0.atticlab.net"
+const ApiPath                      string = "/v1/history/"
 const AccountsIndexPrefix          string = "accounts"
 const TransactionsIndexPrefix      string = "transactions"
 const TransactionTracesIndexPrefix string = "transaction_traces"
@@ -83,6 +86,58 @@ func (s *Server) getIndices() {
 	s.Indices = getIndices(s.ElasticUrl, prefixes)
 }
 
+//takes blockNum and transactionId as arguments
+//retrieves block from node chain api
+//searches requested transaction in retrieved block
+//returns the trx->trx field contents in the correct format
+func (s *Server) getTransactionFromBlock(blockNum json.RawMessage, txId string) (json.RawMessage, error) {
+	var result json.RawMessage
+	u := GetBlockParams { BlockNum: blockNum }
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(u)
+	resp, err := http.Post(RemoteNode + "/v1/chain/get_block", "application/json", b)
+	if err != nil {
+		return result, err
+	}
+	bytes, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	if err != nil {
+		return result, err
+	}
+	var getBlockResult ChainGetBlockResult
+	err = json.Unmarshal(bytes, &getBlockResult)
+	if err != nil {
+		return result, err
+	}
+	for _, trx := range getBlockResult.Transactions {
+		var tmp interface{}
+		err = json.Unmarshal(trx.Trx, &tmp)
+		if err != nil {
+			return result, err
+		}
+		if s, ok := tmp.(string); ok {
+			if s != txId {
+				continue
+			}
+			result, err := json.Marshal([]interface{}{0, s})
+			return result, err
+		} else {
+			var resTrx TransactionFromBlock
+			err = json.Unmarshal(trx.Trx, &resTrx)
+			if err != nil {
+				return result, err
+			}
+			if resTrx.Id != txId {
+				continue
+			}
+			resTrx.Id = ""
+			result, err := json.Marshal([]interface{}{1, resTrx})
+			return result, err
+		}
+	}
+	return result, errors.New("Transaction not found")
+}
+
 //handleGetActions returns http handler that takes
 //http.ResponseWriter and *http.Request as arguments
 //it tries to parse parameters from request body
@@ -138,7 +193,9 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 //http.ResponseWriter and *http.Request as arguments
 //it tries to parse parameters from request body
 //and passes them to getTransaction()
-//The result of getTransaction() is encoded and sent as a response
+//retrieves block from node chain api
+//and appends requested transaction info to getTransaction() result
+//The result is encoded and sent as a response
 func (s *Server) handleGetTransaction() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bytes, err := ioutil.ReadAll(r.Body)
@@ -166,6 +223,20 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
+		//get missing fields from v1/chain/get_block
+		txFromBlock, err := s.getTransactionFromBlock(result.BlockNum, result.Id)
+		if err == nil {
+			var receipt map[string]json.RawMessage
+			err = json.Unmarshal(result.Trx["receipt"], &receipt)
+			if err == nil {
+				receipt["trx"] = txFromBlock
+				bytes, err := json.Marshal(receipt)
+				if err == nil {
+					result.Trx["receipt"] = bytes
+				}
+			}
+		}
+
 		b, err := json.Marshal(result)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
