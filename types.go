@@ -11,6 +11,22 @@ type ErrorResult struct {
 }
 
 
+type ChainGetInfoResult struct {
+	ServerVersion            json.RawMessage `json:"server_version"`
+	ChainId                  json.RawMessage `json:"chain_id"`
+	HeadBlockNum             json.RawMessage `json:"head_block_num"`
+	LastIrreversibleBlockNum json.RawMessage `json:"last_irreversible_block_num"`
+	LastIrreversibleBlockId  json.RawMessage `json:"last_irreversible_block_id"`
+	HeadBlockId              json.RawMessage `json:"head_block_id"`
+	HeadBlockTime            json.RawMessage `json:"head_block_time"`
+	HeadBlockProducer        json.RawMessage `json:"head_block_producer"`
+	VirtualBlockCpuLimit     json.RawMessage `json:"virtual_block_cpu_limit"`
+	VirtualBlockNetLimit     json.RawMessage `json:"virtual_block_net_limit"`
+	BlockCpuLimit            json.RawMessage `json:"block_cpu_limit"`
+	BlockNetLimit            json.RawMessage `json:"block_net_limit"`
+	ServerVersionString      json.RawMessage `json:"server_version_string"`
+}
+
 type GetBlockParams struct {
 	BlockNum json.RawMessage `json:"block_num_or_id"`
 }
@@ -48,7 +64,8 @@ type Action struct {
 }
 
 type GetActionsResult struct {
-	Actions []Action `json:"actions"`
+	Actions                      []Action `json:"actions"`
+	LastIrreversibleBlock json.RawMessage `json:"last_irreversible_block"`
 }
 
 
@@ -58,11 +75,12 @@ type GetTransactionParams struct {
 }
 
 type GetTransactionResult struct {
-	Id                      string `json:"id"`
-	Trx map[string]json.RawMessage `json:"trx"`
-	BlockTime      json.RawMessage `json:"block_time"`
-	BlockNum       json.RawMessage `json:"block_num"`
-	Traces         json.RawMessage `json:"traces"`
+	Id                             string `json:"id"`
+	Trx        map[string]json.RawMessage `json:"trx"`
+	BlockTime             json.RawMessage `json:"block_time"`
+	BlockNum              json.RawMessage `json:"block_num"`
+	Traces                json.RawMessage `json:"traces"`
+	LastIrreversibleBlock json.RawMessage `json:"last_irreversible_block"`
 }
 
 
