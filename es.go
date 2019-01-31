@@ -182,6 +182,7 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 	var startPos *int
 	var lastSize *int
 	targetIndices := make([]string, 0)
+	actionsPerTargetIndex := make([]int64, 0)
 	actionsPerIndex := make([]int64, 0, indexNum)
 	for _, index := range orderedIndices {
 		count, _ := countActions(client, params, index)
@@ -203,9 +204,11 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 	for ; i < indexNum && counter + actionsPerIndex[i] < *params.Pos + *params.Offset; i++ {
 		counter += actionsPerIndex[i]
 		targetIndices = append(targetIndices, orderedIndices[i])
+		actionsPerTargetIndex = append(actionsPerTargetIndex, actionsPerIndex[i])
 	}
 	if i < indexNum {
 		targetIndices = append(targetIndices, orderedIndices[i])
+		actionsPerTargetIndex = append(actionsPerTargetIndex, actionsPerIndex[i])
 		lastSize = new(int)
 		*lastSize = int(*params.Pos - counter + *params.Offset)
 	}
@@ -223,7 +226,7 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 		if i == len(targetIndices) - 1 {
 			sreq.Size(*lastSize)
 		} else {
-			sreq.Size(int(actionsPerIndex[i]))
+			sreq.Size(int(actionsPerTargetIndex[i]))
 		}
 		msearch.Add(sreq)
 	}
