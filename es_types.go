@@ -88,7 +88,7 @@ type TransactionTrace struct {
 
 
 type Account struct {
-	Name    json.RawMessage `json:"name"`
+	Name             string `json:"name"`
 	Creator json.RawMessage `json:"creator"`
 	PubKeys json.RawMessage `json:"pub_keys"`
 	AccountControls [] struct {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"math"
 	"strconv"
+	"sort"
 )
 
 const AccountsIndex          string = "accounts"
@@ -387,7 +388,7 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams, indices
 	}
 
 	result := new(GetKeyAccountsResult)
-	result.AccountNames = make([]json.RawMessage, 0, len(searchHits))
+	result.AccountNames = make([]string, 0, len(searchHits))
 	for _, hit := range searchHits {
 		if hit.Source == nil {
 			continue
@@ -399,6 +400,7 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams, indices
 		}
 		result.AccountNames = append(result.AccountNames, account.Name)
 	}
+	sort.Strings(result.AccountNames)
 	return result, nil
 }
 
@@ -427,7 +429,7 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 	}
 
 	result := new(GetControlledAccountsResult)
-	result.ControlledAccounts = make([]json.RawMessage, 0, len(searchHits))
+	result.ControlledAccounts = make([]string, 0, len(searchHits))
 	for _, hit := range searchHits {
 		if hit.Source == nil {
 			continue
@@ -439,5 +441,6 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 		}
 		result.ControlledAccounts = append(result.ControlledAccounts, account.Name)
 	}
+	sort.Strings(result.ControlledAccounts)
 	return result, nil
 }

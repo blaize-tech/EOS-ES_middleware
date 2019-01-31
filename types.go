@@ -91,7 +91,7 @@ type GetKeyAccountsParams struct {
 }
 
 type GetKeyAccountsResult struct {
-	AccountNames []json.RawMessage `json:"account_names"`
+	AccountNames []string `json:"account_names"`
 }
 
 
@@ -101,5 +101,5 @@ type GetControlledAccountsParams struct {
 }
 
 type GetControlledAccountsResult struct {
-	ControlledAccounts []json.RawMessage `json:"controlled_accounts"`
+	ControlledAccounts []string `json:"controlled_accounts"`
 }
