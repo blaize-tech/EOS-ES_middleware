@@ -126,32 +126,101 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq json.RawMessa
 }
 
 
+func countActions(client *elastic.Client, params GetActionsParams, index string) (int64, error) {
+	query := elastic.NewBoolQuery()
+	query = query.Filter(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
+	count, err := client.Count(index).
+		Query(query).
+		Do(context.Background())
+	return count, err
+}
+
+
 func getActions(client *elastic.Client, params GetActionsParams, indices map[string][]string) (*GetActionsResult, error) {
+	result := new(GetActionsResult)
+	result.Actions = make([]Action, 0)
 	ascOrder := true
-	if *params.Pos < 0 {
+	//deal with request params
+	if *params.Pos == -1 {
 		ascOrder = false
-		*params.Pos = int64(math.Abs(float64(*params.Pos))) - 1
-		*params.Offset = -*params.Offset
+		if *params.Offset >= 0 {
+			*params.Pos -= *params.Offset
+			*params.Offset += 1
+		} else {
+			*params.Offset = int64(math.Abs(float64(*params.Offset - 1)))
+		}
+	} else {
+		if *params.Offset >= 0 {
+			*params.Offset += 1
+		} else {
+			*params.Pos += *params.Offset
+			*params.Offset -= 1
+			*params.Offset = int64(math.Abs(float64(*params.Offset)))
+		}
 	}
-	pos1 := *params.Pos
-	pos2 := *params.Pos + *params.Offset
-	start := int64(math.Min(float64(pos1), float64(pos2)))
-	if start < 0 {
-		*params.Offset = int64(math.Abs(float64(*params.Offset - start)))
-		start = 0
+	if *params.Pos + *params.Offset <= 0 {
+		return result, nil
+	} else if *params.Pos < 0 {
+		*params.Offset += *params.Pos
+		*params.Pos = 0
 	}
-	if *params.Offset < 0 {
-		*params.Offset = int64(math.Abs(float64(*params.Offset)))
+
+	//reverse index list if sort order is desc
+	indexNum := len(indices[ActionTracesIndexPrefix])
+	orderedIndices := make([]string, 0, indexNum)
+	for i, _ := range indices[ActionTracesIndexPrefix] {
+		if ascOrder {
+			orderedIndices = append(orderedIndices, indices[ActionTracesIndexPrefix][i])
+		} else {
+			orderedIndices = append(orderedIndices, indices[ActionTracesIndexPrefix][indexNum-1-i])
+		}
+	}
+
+	//find indices where actions from requested range are located
+	var startPos *int
+	var lastSize *int
+	targetIndices := make([]string, 0)
+	actionsPerIndex := make([]int64, 0, indexNum)
+	for _, index := range orderedIndices {
+		count, _ := countActions(client, params, index)
+		actionsPerIndex = append(actionsPerIndex, count)
+	}
+	totalActions := uint64(0)
+	for _, value := range actionsPerIndex {
+		totalActions += uint64(value)
+	}
+	counter := int64(0)
+	i := 0
+	for ; i < indexNum && counter + actionsPerIndex[i] < *params.Pos; i++ {
+		counter += actionsPerIndex[i] //skip indices that contains action before Pos
+	}
+	if i < indexNum {
+		startPos = new(int)
+		*startPos = int(*params.Pos - counter)
+	}
+	for ; i < indexNum && counter + actionsPerIndex[i] < *params.Pos + *params.Offset; i++ {
+		counter += actionsPerIndex[i]
+		targetIndices = append(targetIndices, orderedIndices[i])
+	}
+	if i < indexNum {
+		targetIndices = append(targetIndices, orderedIndices[i])
+		lastSize = new(int)
+		*lastSize = int(*params.Pos - counter + *params.Offset)
 	}
 	
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
 	msearch := client.MultiSearch()
-	for _, index := range indices[ActionTracesIndexPrefix] {
+	for i, index := range targetIndices {
 		sreq := elastic.NewSearchRequest().
 			Index(index).Query(query).
-			Sort("receipt.global_sequence", ascOrder).
-			From(int(start)).Size(int(*params.Offset))
+			Sort("receipt.global_sequence", ascOrder)
+		if i == 0 {
+			sreq.From(*startPos)
+		}
+		if i == len(targetIndices) - 1 {
+			sreq.Size(*lastSize)
+		}
 		msearch.Add(sreq)
 	}
 	msearchResult, err := msearch.Do(context.Background())
@@ -160,13 +229,7 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 	}
 
 	var searchHits []elastic.SearchHit
-	for i, _ := range msearchResult.Responses {
-		var resp *elastic.SearchResult
-		if ascOrder {
-			resp = msearchResult.Responses[i]
-		} else {
-			resp = msearchResult.Responses[len(msearchResult.Responses)-1-i]
-		}
+	for _, resp := range msearchResult.Responses {
 		if resp == nil || resp.Error != nil {
 			continue
 		}
@@ -179,12 +242,19 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 			break
 		}
 	}
+	msearchResult.Responses = nil
 	
-	result := new(GetActionsResult)
 	result.Actions = make([]Action, 0, len(searchHits))
-	for _, hit := range searchHits {
+	for i, hit := range searchHits {
 		if hit.Source == nil {
 			continue
+		}
+
+		var accountActionSeq uint64
+		if ascOrder {
+			accountActionSeq = uint64(*params.Pos) + uint64(i)
+		} else {
+			accountActionSeq = totalActions - (uint64(*params.Pos) + uint64(i + 1))
 		}
 
 		var actionTrace ActionTrace
@@ -197,6 +267,7 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 			continue
 		}
 		action := Action { GlobalActionSeq: actionTrace.Receipt.GlobalSequence,
+			AccountActionSeq: accountActionSeq,
 			BlockNum: actionTrace.BlockNum, BlockTime: actionTrace.BlockTime,
 			ActionTrace: trace }
 		result.Actions = append(result.Actions, action)
