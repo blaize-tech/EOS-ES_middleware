@@ -24,10 +24,18 @@ For example:
         "elastic_url": "http://127.0.0.1:9201"
     }
 #### Run
-Run with  
+Assuming you are in the project root directory:  
+First build with  
 ```sh
-$ go run *.go
+$ go build ./bin/middleware
 ```
+Then copy config.json to bin  
+After you copied config run executable
+```sh
+$ cd bin
+$ ./middleware
+```
+
 
 ## Usage
 This API supports following GET requests:  
