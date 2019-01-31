@@ -41,7 +41,10 @@ func getIndices(esUrl string, prefixes []string) map[string][]string {
 		lines = append(lines, scanner.Text())
 	}
 	for _, prefix := range prefixes {
-		r, _ := regexp.Compile("\\s" + prefix + "-(\\d)*\\s")
+		r, err := regexp.Compile("\\s" + prefix + "-(\\d)*\\s")
+		if err != nil {
+			return result
+		}
 		for _, line := range lines {
 			match := r.FindString(line)
 			if len(match) != 0 {
@@ -221,10 +224,10 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 		sreq := elastic.NewSearchRequest().
 			Index(index).Query(query).
 			Sort("receipt.global_sequence", ascOrder)
-		if i == 0 {
+		if i == 0 && startPos != nil {
 			sreq.From(*startPos)
 		}
-		if i == len(targetIndices) - 1 {
+		if i == len(targetIndices) - 1 && lastSize != nil {
 			sreq.Size(*lastSize)
 		} else {
 			sreq.Size(int(actionsPerTargetIndex[i]))
