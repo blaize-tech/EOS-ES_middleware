@@ -51,10 +51,10 @@ func (s *Server) initElasticClient(url string) {
 }
 
 func (s *Server) setRoutes() {
-	http.HandleFunc(ApiPath + "get_actions", s.onlyGet(s.handleGetActions()))
-	http.HandleFunc(ApiPath + "get_transaction", s.onlyGet(s.handleGetTransaction()))
-	http.HandleFunc(ApiPath + "get_key_accounts", s.onlyGet(s.handleGetKeyAccounts()))
-	http.HandleFunc(ApiPath + "get_controlled_accounts", s.onlyGet(s.handleGetControlledAccounts()))
+	http.HandleFunc(ApiPath + "get_actions", s.onlyGetOrPost(s.handleGetActions()))
+	http.HandleFunc(ApiPath + "get_transaction", s.onlyGetOrPost(s.handleGetTransaction()))
+	http.HandleFunc(ApiPath + "get_key_accounts", s.onlyGetOrPost(s.handleGetKeyAccounts()))
+	http.HandleFunc(ApiPath + "get_controlled_accounts", s.onlyGetOrPost(s.handleGetControlledAccounts()))
 }
 
 
@@ -62,11 +62,11 @@ func (s *Server) setRoutes() {
 //and returns function that takes http.ResponseWriter and *http.Request
 //this function will call given handler only if http method of the request is GET
 //otherwise it will respond with 405 error code
-func (s *Server) onlyGet(h http.HandlerFunc) http.HandlerFunc {
+func (s *Server) onlyGetOrPost(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method != http.MethodGet) {
+		if (r.Method != http.MethodGet && r.Method != http.MethodPost) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			response := ErrorResult { Code: http.StatusMethodNotAllowed, Message: "Invalid arguments." }
+			response := ErrorResult { Code: http.StatusMethodNotAllowed, Message: "Invalid request method." }
 			json.NewEncoder(w).Encode(response)
 			return
 		}
