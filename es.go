@@ -19,6 +19,8 @@ const TransactionsIndex      string = "transactions"
 const TransactionTracesIndex string = "transaction_traces"
 const ActionTracesIndex      string = "action_traces"
 
+const MaxQuerySize int = 10000
+
 
 //get index list from ES and parse indices from it
 //return a map where every prefix from input array is a key
@@ -220,6 +222,8 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 		}
 		if i == len(targetIndices) - 1 {
 			sreq.Size(*lastSize)
+		} else {
+			sreq.Size(int(actionsPerIndex[i]))
 		}
 		msearch.Add(sreq)
 	}
@@ -361,7 +365,7 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams, indices
 	query = query.Filter(elastic.NewMatchQuery("pub_keys.key", params.PublicKey))
 	msearch := client.MultiSearch()
 	for _, index := range indices[AccountsIndexPrefix] {
-		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query))
+		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query).Size(MaxQuerySize))
 	}
 	msearchResult, err := msearch.Do(context.Background())
 	if err != nil || msearchResult == nil || msearchResult.Responses == nil {
@@ -398,10 +402,10 @@ func getKeyAccounts(client *elastic.Client, params GetKeyAccountsParams, indices
 
 func getControlledAccounts(client *elastic.Client, params GetControlledAccountsParams, indices map[string][]string) (*GetControlledAccountsResult, error) {
 	query := elastic.NewBoolQuery()
-	query = query.Filter(elastic.NewMatchQuery("name.keyword", params.ControllingAccount)) //Is it better to convert name to number and search by id?
+	query = query.Filter(elastic.NewMatchQuery("account_controls.name.keyword", params.ControllingAccount))
 	msearch := client.MultiSearch()
 	for _, index := range indices[AccountsIndexPrefix] {
-		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query))
+		msearch.Add(elastic.NewSearchRequest().Index(index).Query(query).Size(MaxQuerySize))
 	}
 	msearchResult, err := msearch.Do(context.Background())
 	if err != nil || msearchResult == nil || msearchResult.Responses == nil {
@@ -430,9 +434,7 @@ func getControlledAccounts(client *elastic.Client, params GetControlledAccountsP
 		if err != nil {
 			return nil, errors.New("Failed to parse ES response")
 		}
-		for _, acc := range account.AccountControls {
-			result.ControlledAccounts = append(result.ControlledAccounts, acc.Name)
-		}
+		result.ControlledAccounts = append(result.ControlledAccounts, account.Name)
 	}
 	return result, nil
 }
