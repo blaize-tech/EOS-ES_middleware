@@ -216,6 +216,9 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 		lastSize = new(int)
 		*lastSize = int(*params.Pos - counter + *params.Offset)
 	}
+	if len(targetIndices) == 0 {
+		return result, nil
+	}
 	
 	query := elastic.NewBoolQuery()
 	query = query.Must(elastic.NewMultiMatchQuery(params.AccountName, "receipt.receiver", "act.authorization.actor"))
@@ -320,49 +323,51 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 		getTxTraceResult = doc
 	}
 
-	if getTxResult == nil || getTxTraceResult == nil || 
-		!getTxResult.Found || !getTxTraceResult.Found {
+	if getTxTraceResult == nil || !getTxTraceResult.Found {
 		return nil, errors.New("Transaction not found")
 	}
-	
-	var transaction Transaction
-	err = json.Unmarshal(*getTxResult.Source, &transaction)
-	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
-	}
+
+	//prepare data from transaction_traces index
 	var txTrace TransactionTrace
 	err = json.Unmarshal(*getTxTraceResult.Source, &txTrace)
 	if err != nil {
 		return nil, errors.New("Failed to parse ES response")
 	}
-
 	result := new(GetTransactionResult)
 	result.Id = params.Id
 	result.Trx = make(map[string]json.RawMessage)
 	result.BlockTime = txTrace.BlockTime
-	result.BlockNum = transaction.BlockNum
+	result.BlockNum = txTrace.BlockNum
 	result.Traces, err = json.Marshal(txTrace.ActionTraces)
 	if err != nil {
 		return nil, errors.New("Internal error")
 	}
-	trx := make(map[string]json.RawMessage)
-	trx["expiration"] = transaction.Expiration
-	trx["ref_block_num"] = transaction.RefBlockNum
-	trx["ref_block_prefix"] = transaction.RefBlockPrefix
-	trx["max_net_usage_words"] = transaction.MaxNetUsageWords
-	trx["max_cpu_usage_ms"] = transaction.MaxCpuUsageMs
-	trx["delay_sec"] = transaction.DelaySec
-	trx["context_free_actions"] = transaction.ContextFreeActions
-	trx["actions"] = transaction.Actions
-	trx["transaction_extensions"] = transaction.TransactionExtensions
-	trx["signatures"] = transaction.Signatures
-	trx["context_free_data"] = transaction.ContextFreeData
-	byteTrx, err := json.Marshal(trx)
-	if err != nil {
-		return nil, errors.New("Internal error")
-	}
-	result.Trx["trx"] = byteTrx
 	result.Trx["receipt"] = txTrace.Receipt
+	
+	//prepare data from transactions index
+	if getTxResult != nil && getTxResult.Found {
+		var transaction Transaction
+		err = json.Unmarshal(*getTxResult.Source, &transaction)
+		if err == nil {
+			trx := make(map[string]json.RawMessage)
+			trx["expiration"] = transaction.Expiration
+			trx["ref_block_num"] = transaction.RefBlockNum
+			trx["ref_block_prefix"] = transaction.RefBlockPrefix
+			trx["max_net_usage_words"] = transaction.MaxNetUsageWords
+			trx["max_cpu_usage_ms"] = transaction.MaxCpuUsageMs
+			trx["delay_sec"] = transaction.DelaySec
+			trx["context_free_actions"] = transaction.ContextFreeActions
+			trx["actions"] = transaction.Actions
+			trx["transaction_extensions"] = transaction.TransactionExtensions
+			trx["signatures"] = transaction.Signatures
+			trx["context_free_data"] = transaction.ContextFreeData
+			byteTrx, err := json.Marshal(trx)
+			if err != nil {
+				return nil, errors.New("Internal error")
+			}
+			result.Trx["trx"] = byteTrx
+		}
+	}
 	return result, nil
 }
 
