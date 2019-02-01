@@ -167,10 +167,10 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 			return
 		}
 
-		result, err := getTransaction(s.ElasticClient, params, s.Indices)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
+		result, error := getTransaction(s.ElasticClient, params, s.Indices)
+		if error != nil {
+			w.WriteHeader(error.Code)
+			response := ErrorResult { Code: error.Code, Message: error.Error.Error() }
 			json.NewEncoder(w).Encode(response)
 			return
 		}

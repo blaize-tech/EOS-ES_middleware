@@ -290,7 +290,7 @@ func getActions(client *elastic.Client, params GetActionsParams, indices map[str
 }
 
 
-func getTransaction(client *elastic.Client, params GetTransactionParams, indices map[string][]string) (*GetTransactionResult, error) {
+func getTransaction(client *elastic.Client, params GetTransactionParams, indices map[string][]string) (*GetTransactionResult, *ErrorWithCode) {
 	mgetTx := client.MultiGet()
 	mgetTxTrace := client.MultiGet()
 	for _, index := range indices[TransactionsIndexPrefix] {
@@ -301,11 +301,17 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 	}
 	mgetTxResult, err := mgetTx.Do(context.Background())
 	if err != nil || mgetTxResult == nil || mgetTxResult.Docs == nil {
-		return nil, err
+		error := new(ErrorWithCode)
+		error.Error = err
+		error.Code = 500
+		return nil, error
 	}
 	mgetTxTraceResult, err := mgetTxTrace.Do(context.Background())
 	if err != nil || mgetTxTraceResult == nil || mgetTxTraceResult.Docs == nil {
-		return nil, err
+		error := new(ErrorWithCode)
+		error.Error = err
+		error.Code = 500
+		return nil, error
 	}
 
 	var getTxResult *elastic.GetResult
@@ -324,14 +330,20 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 	}
 
 	if getTxTraceResult == nil || !getTxTraceResult.Found {
-		return nil, errors.New("Transaction not found")
+		error := new(ErrorWithCode)
+		error.Error = errors.New("Transaction not found.")
+		error.Code = 404
+		return nil, error
 	}
 
 	//prepare data from transaction_traces index
 	var txTrace TransactionTrace
 	err = json.Unmarshal(*getTxTraceResult.Source, &txTrace)
 	if err != nil {
-		return nil, errors.New("Failed to parse ES response")
+		error := new(ErrorWithCode)
+		error.Error = err
+		error.Code = 500
+		return nil, error
 	}
 	result := new(GetTransactionResult)
 	result.Id = params.Id
@@ -340,7 +352,10 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 	result.BlockNum = txTrace.BlockNum
 	result.Traces, err = json.Marshal(txTrace.ActionTraces)
 	if err != nil {
-		return nil, errors.New("Internal error")
+		error := new(ErrorWithCode)
+		error.Error = err
+		error.Code = 500
+		return nil, error
 	}
 	result.Trx["receipt"] = txTrace.Receipt
 	
@@ -363,7 +378,10 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 			trx["context_free_data"] = transaction.ContextFreeData
 			byteTrx, err := json.Marshal(trx)
 			if err != nil {
-				return nil, errors.New("Internal error")
+				error := new(ErrorWithCode)
+				error.Error = err
+				error.Code = 500
+				return nil, error
 			}
 			result.Trx["trx"] = byteTrx
 		}
