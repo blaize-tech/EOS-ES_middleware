@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"time"
+	"sync"
 	"io/ioutil"
 	"net/http"
 	"encoding/json"
@@ -14,6 +16,7 @@ const AccountsIndexPrefix          string = "accounts"
 const TransactionsIndexPrefix      string = "transactions"
 const TransactionTracesIndexPrefix string = "transaction_traces"
 const ActionTracesIndexPrefix      string = "action_traces"
+const FetchIndexListIntervalSeconds int64 = 30
 
 
 type Config struct {
@@ -25,7 +28,10 @@ type Config struct {
 type Server struct {
 	ElasticUrl string
     ElasticClient *elastic.Client
-    Indices map[string][]string
+	Indices map[string][]string
+	//syncronization for Indices
+	Wg1 sync.WaitGroup
+	Wg2 sync.WaitGroup
 }
 
 
@@ -46,7 +52,12 @@ func (s *Server) initElasticClient(url string) {
 	} else {
 		s.ElasticClient = client
 		s.ElasticUrl = url
-		s.getIndices()
+		go func () {
+			for {
+				s.fetchIndices()
+				time.Sleep(time.Duration(FetchIndexListIntervalSeconds) * time.Second)
+			}
+		}()
 	}
 }
 
@@ -74,13 +85,25 @@ func (s *Server) onlyGetOrPost(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *Server) getIndices() {
+func (s *Server) fetchIndices() {
 	prefixes := []string {
 		AccountsIndexPrefix,
 		TransactionsIndexPrefix,
 		TransactionTracesIndexPrefix,
 		ActionTracesIndexPrefix }
-	s.Indices = getIndices(s.ElasticUrl, prefixes)
+	tmp := getIndices(s.ElasticUrl, prefixes)
+	s.Wg1.Add(1)
+	s.Wg2.Wait()
+	s.Indices = tmp
+	s.Wg1.Done()
+}
+
+func (s *Server) getIndices() map[string][]string {
+	s.Wg1.Wait()
+	s.Wg2.Add(1)
+	result := s.Indices
+	s.Wg2.Done()
+	return result
 }
 
 //handleGetActions returns http handler that takes
@@ -116,7 +139,7 @@ func (s *Server) handleGetActions() http.HandlerFunc {
 			*params.Offset = -20
 		}
 
-		result, err := getActions(s.ElasticClient, params, s.Indices)
+		result, err := getActions(s.ElasticClient, params, s.getIndices())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -167,7 +190,7 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 			return
 		}
 
-		result, error := getTransaction(s.ElasticClient, params, s.Indices)
+		result, error := getTransaction(s.ElasticClient, params, s.getIndices())
 		if error != nil {
 			w.WriteHeader(error.Code)
 			response := ErrorResult { Code: error.Code, Message: error.Error.Error() }
@@ -229,7 +252,7 @@ func (s *Server) handleGetKeyAccounts() http.HandlerFunc {
 			return
 		}
 		
-		result, err := getKeyAccounts(s.ElasticClient, params, s.Indices)
+		result, err := getKeyAccounts(s.ElasticClient, params, s.getIndices())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
@@ -272,7 +295,7 @@ func (s *Server) handleGetControlledAccounts() http.HandlerFunc {
 			return
 		}
 
-		result, err := getControlledAccounts(s.ElasticClient, params, s.Indices)
+		result, err := getControlledAccounts(s.ElasticClient, params, s.getIndices())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			response := ErrorResult { Code: http.StatusInternalServerError, Message: err.Error() }
