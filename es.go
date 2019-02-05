@@ -69,7 +69,7 @@ func convertAbiToBytes(actionTraces []TransactionTraceActionTrace) {
 		}
 		actionTracesPtrs = actionTracesPtrs[1:len(actionTracesPtrs)]
 		if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" &&
-			len(trace.Act.HexData) > 20 {
+			len(trace.Act.HexData) >= 20 { //in hex_data field encoded abi starts from 20 symbol
 			data := trace.Act.HexData[20:]
 			bytes, err := json.Marshal(data)
 			if err == nil {

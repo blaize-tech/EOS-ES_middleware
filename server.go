@@ -224,7 +224,7 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 				for i, _ := range trx.Actions {
 					//actions contain abi in json format so we need to extract abi from hex_data field
 					if trx.Actions[i].Account == "eosio" && trx.Actions[i].Name == "setabi" &&
-						len(trx.Actions[i].HexData) > 20 {
+						len(trx.Actions[i].HexData) >= 20 { //in hex_data field encoded abi starts from 20 symbol
 						data := trx.Actions[i].HexData[20:]
 						bytes, err := json.Marshal(data)
 						if err == nil {
