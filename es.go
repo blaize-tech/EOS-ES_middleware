@@ -68,7 +68,8 @@ func convertAbiToBytes(actionTraces []TransactionTraceActionTrace) {
 			actionTracesPtrs = append(actionTracesPtrs, &trace.InlineTraces[i])
 		}
 		actionTracesPtrs = actionTracesPtrs[1:len(actionTracesPtrs)]
-		if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" {
+		if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" &&
+			len(trace.Act.HexData) > 20 {
 			data := trace.Act.HexData[20:]
 			bytes, err := json.Marshal(data)
 			if err == nil {
