@@ -59,7 +59,13 @@ type Transaction struct {
 
 type TransactionTraceActionTrace struct {
 	Receipt          json.RawMessage `json:"receipt"`
-	Act              json.RawMessage `json:"act"`
+	Act struct {
+		Account                  string `json:"account"`
+		Name                     string `json:"name"`
+		Authorization   json.RawMessage `json:"authorization"`
+		Data map[string]json.RawMessage `json:"data"`
+		HexData                  string `json:"hex_data"`
+	} `json:"act"`
 	ContextFree      json.RawMessage `json:"context_free"`
 	Elapsed          json.RawMessage `json:"elapsed"`
 	Console          json.RawMessage `json:"console"`

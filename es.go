@@ -336,26 +336,54 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 		return nil, error
 	}
 
-	//prepare data from transaction_traces index
-	var txTrace TransactionTrace
-	err = json.Unmarshal(*getTxTraceResult.Source, &txTrace)
+	result, err := createTransaction(getTxResult, getTxTraceResult)
 	if err != nil {
 		error := new(ErrorWithCode)
 		error.Error = err
 		error.Code = 500
 		return nil, error
 	}
-	result := new(GetTransactionResult)
 	result.Id = params.Id
+	return result, nil
+}
+
+
+//gets info from transactions and transaction_traces indices
+//and composes return value for get_transaction
+func createTransaction(getTxResult *elastic.GetResult, getTxTraceResult *elastic.GetResult) (*GetTransactionResult, error) {
+	//prepare data from transaction_traces index
+	var txTrace TransactionTrace
+	err := json.Unmarshal(*getTxTraceResult.Source, &txTrace)
+	if err != nil {
+		return nil, err
+	}
+	result := new(GetTransactionResult)
 	result.Trx = make(map[string]json.RawMessage)
 	result.BlockTime = txTrace.BlockTime
 	result.BlockNum = txTrace.BlockNum
+	//recursively replace json abi with bytes
+	var actionTraces []*TransactionTraceActionTrace
+	for i, _ := range txTrace.ActionTraces {
+		actionTraces = append(actionTraces, &txTrace.ActionTraces[i])
+	}
+	trace := new(TransactionTraceActionTrace)
+	for len(actionTraces) > 0 {
+		trace = actionTraces[0]
+		for i, _ := range trace.InlineTraces {
+			actionTraces = append(actionTraces, &trace.InlineTraces[i])
+		}
+		actionTraces = actionTraces[1:len(actionTraces)]
+		if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" {
+			data := trace.Act.HexData[20:]
+			bytes, err := json.Marshal(data)
+			if err == nil {
+				trace.Act.Data["abi"] = bytes
+			}
+		}
+	}
 	result.Traces, err = json.Marshal(txTrace.ActionTraces)
 	if err != nil {
-		error := new(ErrorWithCode)
-		error.Error = err
-		error.Code = 500
-		return nil, error
+		return nil, err
 	}
 	result.Trx["receipt"] = txTrace.Receipt
 	
@@ -378,10 +406,7 @@ func getTransaction(client *elastic.Client, params GetTransactionParams, indices
 			trx["context_free_data"] = transaction.ContextFreeData
 			byteTrx, err := json.Marshal(trx)
 			if err != nil {
-				error := new(ErrorWithCode)
-				error.Error = err
-				error.Code = 500
-				return nil, error
+				return nil, err
 			}
 			result.Trx["trx"] = byteTrx
 		}

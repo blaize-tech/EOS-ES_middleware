@@ -200,6 +200,42 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 		//get missing fields from v1/chain/get_block
 		txFromBlock, err := getTransactionFromBlock(result.BlockNum, result.Id)
 		if err == nil {
+			var trx struct {
+				Expiration            json.RawMessage `json:"expiration"`
+				RefBlockNum           json.RawMessage `json:"ref_block_num"`
+				RefBlockPrefix        json.RawMessage `json:"ref_block_prefix"`
+				MaxNetUsageWords      json.RawMessage `json:"max_net_usage_words"`
+				MaxCpuUsageMs         json.RawMessage `json:"max_cpu_usage_ms"`
+				DelaySec              json.RawMessage `json:"delay_sec"`
+				ContextFreeActions    json.RawMessage `json:"context_free_actions"`
+				ContextFreeData       json.RawMessage `json:"context_free_data"`
+				TransactionExtensions json.RawMessage `json:"transaction_extensions"`
+				Signatures            json.RawMessage `json:"signatures"`
+				Actions []struct {
+					Account                  string `json:"account"`
+					Name                     string `json:"name"`
+					Authorization   json.RawMessage `json:"authorization"`
+					Data map[string]json.RawMessage `json:"data"`
+					HexData                  string `json:"hex_data"`
+				} `json:"actions"`
+			}
+			err = json.Unmarshal(result.Trx["trx"], &trx)
+			if err == nil {
+				for i, _ := range trx.Actions {
+					//actions contain abi in json format so we need to extract abi from hex_data field
+					if trx.Actions[i].Account == "eosio" && trx.Actions[i].Name == "setabi" {
+						data := trx.Actions[i].HexData[20:]
+						bytes, err := json.Marshal(data)
+						if err == nil {
+							trx.Actions[i].Data["abi"] = bytes
+						}
+					}
+				}
+				bytes, err := json.Marshal(trx)
+				if err == nil {
+					result.Trx["trx"] = bytes
+				}
+			}
 			var receipt map[string]json.RawMessage
 			err = json.Unmarshal(result.Trx["receipt"], &receipt)
 			if err == nil {
