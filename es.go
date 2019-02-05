@@ -71,9 +71,8 @@ func convertAbiToBytes(actionTraces []TransactionTraceActionTrace) {
 		if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" &&
 			len(trace.Act.HexData) >= 20 { //in hex_data field encoded abi starts from 20 symbol
 			data := trace.Act.HexData[20:]
-			bytes, err := json.Marshal(data)
-			if err == nil {
-				trace.Act.Data["abi"] = bytes
+			if m, ok := trace.Act.Data.(map[string]interface{}); ok {
+				m["abi"] = data
 			}
 		}
 	}
@@ -149,11 +148,11 @@ func getActionTrace(client *elastic.Client, txId string, actionSeq json.RawMessa
 		return nil, err
 	}
 	//replace json abi with bytes
-	if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" {
+	if trace.Act.Account == "eosio" && trace.Act.Name == "setabi" &&
+		len(trace.Act.HexData) >= 20 {
 		data := trace.Act.HexData[20:]
-		bytes, err := json.Marshal(data)
-		if err == nil {
-			trace.Act.Data["abi"] = bytes
+		if m, ok := trace.Act.Data.(map[string]interface{}); ok {
+			m["abi"] = data
 		}
 	}
 	convertAbiToBytes(trace.InlineTraces)

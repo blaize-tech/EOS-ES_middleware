@@ -63,8 +63,8 @@ type TransactionTraceActionTrace struct {
 		Account                  string `json:"account"`
 		Name                     string `json:"name"`
 		Authorization   json.RawMessage `json:"authorization"`
-		Data map[string]json.RawMessage `json:"data"`
-		HexData                  string `json:"hex_data"`
+		Data interface{} `json:"data"`
+		HexData                  string `json:"hex_data,omitempty"`
 	} `json:"act"`
 	ContextFree      json.RawMessage `json:"context_free"`
 	Elapsed          json.RawMessage `json:"elapsed"`

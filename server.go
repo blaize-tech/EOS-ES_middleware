@@ -212,11 +212,11 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 				TransactionExtensions json.RawMessage `json:"transaction_extensions"`
 				Signatures            json.RawMessage `json:"signatures"`
 				Actions []struct {
-					Account                  string `json:"account"`
-					Name                     string `json:"name"`
-					Authorization   json.RawMessage `json:"authorization"`
-					Data map[string]json.RawMessage `json:"data"`
-					HexData                  string `json:"hex_data"`
+					Account                string `json:"account"`
+					Name                   string `json:"name"`
+					Authorization json.RawMessage `json:"authorization"`
+					Data              interface{} `json:"data"`
+					HexData                string `json:"hex_data,omitempty"`
 				} `json:"actions"`
 			}
 			err = json.Unmarshal(result.Trx["trx"], &trx)
@@ -226,9 +226,8 @@ func (s *Server) handleGetTransaction() http.HandlerFunc {
 					if trx.Actions[i].Account == "eosio" && trx.Actions[i].Name == "setabi" &&
 						len(trx.Actions[i].HexData) >= 20 { //in hex_data field encoded abi starts from 20 symbol
 						data := trx.Actions[i].HexData[20:]
-						bytes, err := json.Marshal(data)
-						if err == nil {
-							trx.Actions[i].Data["abi"] = bytes
+						if m, ok := trx.Actions[i].Data.(map[string]interface{}); ok {
+							m["abi"] = data
 						}
 					}
 				}
