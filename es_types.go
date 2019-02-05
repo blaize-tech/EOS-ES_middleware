@@ -84,7 +84,7 @@ type TransactionTrace struct {
 	BlockNum        json.RawMessage `json:"block_num"`
 	BlockTime       json.RawMessage `json:"block_time"`
 	ProducerBlockId json.RawMessage `json:"producer_block_id"`
-	Receipt         json.RawMessage `json:"receipt"`
+	Receipt map[string]json.RawMessage `json:"receipt"`
 	Elapsed         json.RawMessage `json:"elapsed"`
 	NetUsage        json.RawMessage `json:"net_usage"`
 	Scheduled       json.RawMessage `json:"scheduled"`
