@@ -429,6 +429,30 @@ func createTransaction(getTxResult *elastic.GetResult, getTxTraceResult *elastic
 		var transaction Transaction
 		err = json.Unmarshal(*getTxResult.Source, &transaction)
 		if err == nil {
+			var actions []struct {
+				Account                string `json:"account"`
+				Name                   string `json:"name"`
+				Authorization json.RawMessage `json:"authorization"`
+				Data              interface{} `json:"data"`
+				HexData                string `json:"hex_data,omitempty"`
+			}
+			err = json.Unmarshal(transaction.Actions, &actions)
+			if err == nil {
+				for i, _ := range actions {
+					//actions contain abi in json format so we need to extract abi from hex_data field
+					if actions[i].Account == "eosio" && actions[i].Name == "setabi" &&
+						len(actions[i].HexData) >= 20 { //in hex_data field encoded abi starts from 20 symbol
+						data := actions[i].HexData[20:]
+						if m, ok := actions[i].Data.(map[string]interface{}); ok {
+							m["abi"] = data
+						}
+					}
+				}
+				bytes, err := json.Marshal(actions)
+				if err == nil {
+					transaction.Actions = bytes
+				}
+			}
 			trx := make(map[string]json.RawMessage)
 			trx["expiration"] = transaction.Expiration
 			trx["ref_block_num"] = transaction.RefBlockNum
