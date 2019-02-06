@@ -38,7 +38,7 @@ $ ./middleware
 
 
 ## Usage
-This API supports following GET requests:  
+This API supports following GET and POST requests:  
 
 #### /v1/history/get_actions
 Requires json body with the following properties:  
